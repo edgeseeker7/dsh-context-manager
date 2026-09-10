@@ -1,7 +1,7 @@
-# dsh-context-reset profile patch: mount the plugin at root. The official
+# dsh-context-manager profile patch: mount the plugin at root. The official
 # compaction engine is deliberately NOT touched — summarizing compaction
 # stays the default, and a hard reset happens only when the user types
 # /reset in the input box.
 - insert:
-    - id: context-reset
-      name: dsh-context-reset
+    - id: context-manager
+      name: dsh-context-manager

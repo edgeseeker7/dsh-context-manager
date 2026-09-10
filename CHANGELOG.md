@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.0
+
+- Renamed to **dsh-context-manager**: the plugin grows from "a `/reset`
+  command" into a full context-memory subsystem — four memory layers
+  (vault / diary / sketch / swap), seven tools, one command.
+- New malloc layer (`lib/malloc.js`): `context_alloc` / `context_free` /
+  `context_list` pin VERBATIM facts into the last system-prompt section
+  (order 10300), surviving every compaction and `/reset` unparaphrased.
+  - Two scopes: task pins (`t*`, per session, bulk-freed by `/reset` with
+    the count reported in the command result) and workspace pins (`w*`,
+    shared across sessions and subagents of the same workspace).
+  - Handles are monotonic and never reused; updates are free + alloc.
+  - Dual quota gates: per-pin chars and total ≤ min(pinsMaxChars,
+    pinsWindowRatio × contextWindow); exhaustion rejects with the oldest
+    task pins named as free candidates.
+  - Cadence nudge (every `nudgeEvery` non-memory tool calls, attached to
+    tool results for minimal KV-cache cost) reminds the model to pin.
+- Host split: `lib/history.js` (retrieval tools) and `lib/notes.js`
+  (diary store + tools, with lazy migration from the old
+  `~/.dsh/context-reset/notes/` path) extracted from `engine.js`.
+- New config keys: `pinMaxChars` (4000), `pinsMaxChars` (12000),
+  `pinsWindowRatio` (0.05), `nudgeEvery` (6), `suggestCount` (3).
+- `test/smoke.mjs` covers the store semantics (30 assertions); CI runs it
+  via `pnpm check`. Dev dependencies pinned to the single 0.1.0-rc.8 era
+  so the smoke tree resolves from npm alone.
+
 ## 0.2.0
 
 - Hybrid checkpoint: `/reset` now asks the LLM for a one-shot sketch of the

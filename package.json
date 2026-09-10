@@ -1,24 +1,25 @@
 {
-  "name": "dsh-context-reset",
-  "version": "0.2.0",
-  "description": "On-demand hard context-window reset for DeepSeek Harness: a /reset command next to /compact — no summarization, the model keeps durable notes and retrieves history on demand",
+  "name": "dsh-context-manager",
+  "version": "1.0.0",
+  "description": "Explicit context-memory subsystem for DeepSeek Harness: a four-layer memory model (verbatim pins, durable notes, LLM sketch, full-log retrieval) with a malloc-style tool API (context_alloc/free/list) and an on-demand /reset command next to /compact",
   "keywords": [
     "deepseek-harness",
     "dsh",
     "cordis",
     "compaction",
     "context-window",
-    "agent-memory"
+    "agent-memory",
+    "malloc"
   ],
   "license": "MIT",
   "author": "edgeseeker7",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/edgeseeker7/dsh-context-reset.git"
+    "url": "git+https://github.com/edgeseeker7/dsh-context-manager.git"
   },
-  "homepage": "https://github.com/edgeseeker7/dsh-context-reset#readme",
+  "homepage": "https://github.com/edgeseeker7/dsh-context-manager#readme",
   "bugs": {
-    "url": "https://github.com/edgeseeker7/dsh-context-reset/issues"
+    "url": "https://github.com/edgeseeker7/dsh-context-manager/issues"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -34,7 +35,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "biome check lib/ && node --check lib/index.js && node --check lib/engine.js && node --check lib/command.js",
+    "check": "biome check lib/ && node --check lib/index.js && node --check lib/engine.js && node --check lib/command.js && node --check lib/malloc.js && node --check lib/history.js && node --check lib/notes.js && node test/smoke.mjs",
     "check:fix": "biome check --write lib/",
     "prepublishOnly": "pnpm run check"
   },
@@ -47,7 +48,24 @@
     "@deepseek-ai/dsh-tools": ">=0.1.0-rc.8 <0.2.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.12"
+    "@biomejs/biome": "^2.5.12",
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/cordis-plugin-include": "^1.0.7",
+    "@deepseek-ai/cordis-plugin-loader": "^1.0.3",
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-attachment": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-brand": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-code-runtime": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-home-paths": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-invariants": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-scope": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-session": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-system-prompt": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-timeout": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-user-approval": "0.1.0-rc.8"
   },
   "packageManager": "pnpm@11.21.0",
   "dsh": {

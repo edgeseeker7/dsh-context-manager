@@ -1,68 +1,81 @@
-# dsh-context-reset
+# dsh-context-manager
+
+Explicit context-memory subsystem for DeepSeek Harness. One plugin, four memory layers, seven tools, one command.
 
 [中文文档](README.zh.md)
 
-An on-demand hard context-window reset for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) — a **`/reset`** command that sits next to the official `/compact` in the input box. When you type it, earlier turns leave the model's context **without any LLM summary**, the model's own durable notes are re-injected, and full history stays one tool call away.
+## The problem
 
-**The official compaction stays the default.** This plugin never disables or pre-empts it — automatic summarizing compaction and `/compact` behave exactly as before. A hard reset happens only when you explicitly ask for one.
+When the context window fills up, the official compaction replaces old history with an LLM summary. That summary is the **only** bridge — it is silently lossy ("forgotten but confident"), errors compound across compactions, and nothing verbatim is guaranteed to survive.
 
-## Why a hard reset, sometimes?
-
-Summarization compaction is silently lossy: "never touch this endpoint" compresses into a vague one-liner, and the model doesn't know what it forgot. A hard reset moves the failure mode from *silently forgetting* to *failing to look something up* — visible and debuggable. It also costs **zero** extra tokens (no summary call), and never compounds: the 5th reset is as faithful as the 1st because the original log is never rewritten.
-
-Use `/compact` when you want continuity by summary. Use `/reset` when you want a clean window without losing recall.
-
-The difference is how forgetting is handled: `/compact` leaves a single summary — whatever it drops is gone. `/reset` is three layers — a one-shot LLM sketch (explicitly labeled an unverified draft, for continuity), the model's own durable notes (deterministic, authoritative), and the history tools (catching everything the first two drop). If the sketch call fails, the reset degrades to a pure hard cut and still completes; set `llmSummary: false` for the zero-LLM variant.
-
-## What you get
-
-- **`/reset` command** — same durable transaction as the official compactor (tool-pairing balance, checkpoint framing), but the replacement checkpoint is a fixed reset notice carrying the agent's current notes. No LLM call.
-- **`notes_append` / `notes_read`** — the model records durable facts (decisions + why, user constraints, paths/IDs, dead ends). Notes persist per session in `~/.dsh/context-reset/notes/` and are re-injected into the checkpoint after every `/reset`.
-- **`history_search` / `history_read`** — keyword search and exact-range reads over the *full* session log, including turns that left the active context. Works after official compaction too — nothing is ever deleted.
-- **Budget hints** — a system-prompt section shows ~25% / ~50% / ~75% usage, quantized so the text only changes at band crossings and the provider KV cache survives.
-
-## Install
-
-```sh
-dsh plugin --profile web add dsh-context-reset
-```
-
-Restart `dsh web` after installing. Then type `/` in the input box — `reset` appears alongside `compact`.
-
-## How a reset reads
-
-The model sees a checkpoint like:
+## The model: four memory layers
 
 ```
-CONTEXT WINDOW RESET #1 (/reset, dsh-context-reset) — no summary was produced and no information was deleted.
-The earlier conversation (148 replayed messages) left the active context but remains FULLY recorded
-in this session's log. When a fact, path, decision or constraint feels missing, retrieve it instead of guessing:
-- history_search({ query }) — find prior messages and tool activity by keyword
-- history_read({ fromSeq, toSeq }) — read an exact event range
-
-Durable notes (persisted across resets, newest last):
-…
+① vault   pins: VERBATIM facts in the last system-prompt section.
+           Survive every compaction and /reset, never paraphrased.
+② diary   notes: the model's distilled prose, in a session file.
+           Re-injected into the /reset checkpoint.
+③ sketch  the /reset checkpoint: LLM summary labeled UNVERIFIED
+           + notes + retrieval instructions.
+④ swap    the full session log. Nothing is ever deleted;
+           history_search / history_read page anything back in.
 ```
 
-…plus the untouched system prompt and the conversation tail the official manual-compaction selection keeps.
+Reclamation policies: **pin = mlock, official compact = summarizing GC, /reset = bulk free** of the heap (and of task pins).
 
-Fail-safe edge: if the only cuttable span is already smaller than the checkpoint itself, the official transaction guard skips the reset and the conversation continues unchanged — the skip is recorded as a `compaction/end` error in the session log.
+## Tools (installed into every agent, subagents included)
 
-## Config
+| Tool | Semantics |
+|------|-----------|
+| `context_alloc(text, label, scope)` | Pin a verbatim fact, returns a handle (`t*`/`w*`). `scope: "task"` (default) dies with `/reset`; `"permanent"` persists across sessions of this workspace. |
+| `context_free(handle)` | Release a pin. Handles are monotonic, never reused — a freed handle dangles, it can never point at new content. |
+| `context_list()` | Allocation table: every pin with handle/label/size/age, plus quota usage. |
+| `notes_append(text)` / `notes_read()` | Durable diary (append-only). |
+| `history_search(query)` / `history_read(fromSeq, toSeq)` | Full-log retrieval, shadowed events included. |
 
-Optional, on the profile row (`~/.dsh/profiles/<profile>/cordis.yml`):
+A cadence nudge (every 6 non-memory tool calls, riding tool results so it costs almost no KV cache) reminds the model to pin — the same pattern that made `notify_user` reporting reliable in dsh-subagent-progress.
 
-| key | default | meaning |
-| --- | --- | --- |
-| `llmSummary` | `true` | one-shot LLM sketch at reset (labeled unverified; pure-cut fallback on failure); `false` restores the zero-LLM cut |
-| `budgetHints` | `true` | show the 25/50/75% budget section |
-| `notesMaxChars` | `8000` | notes budget re-injected after a reset (newest kept) |
-| `historyMaxChars` | `8000` | per-call output cap for `history_read` |
+## `/reset`
 
-## Compatibility
+Sits next to `/compact` in the input box. Replaces resettable history with the hybrid checkpoint (sketch labeled UNVERIFIED + notes + retrieval instructions), bulk-frees task pins, and reports how many were freed. The official automatic compaction is **not** touched — it stays the default.
 
-Requires dsh ≥ 0.1.2-rc.1 (developed and verified on 0.1.5-rc.1). The engine subclasses the official `BasicCompactionEngine` with `auto: false`; if a future dsh changes that class's `summarize()` hook or the manual-compaction path, this plugin needs a matching update.
+## Quotas (dual gate)
+
+Pins pay rent on every request (they live in the system prompt), so the vault is bounded twice:
+
+- per pin: ≤ `pinMaxChars` (default 4000)
+- total: ≤ min(`pinsMaxChars` (default 12000), `pinsWindowRatio` (default 5%) × contextWindow × 3 chars/token)
+
+Quota exhaustion rejects the alloc and names the oldest task pins as free candidates — honest failure with a handrail, never silent eviction.
+
+## Configuration
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `budgetHints` | `true` | Quantized 25/50/75% budget section (cache-stable). |
+| `llmSummary` | `true` | `/reset` runs one cache-friendly LLM sketch; `false` = pure hard cut. |
+| `notesMaxChars` | `8000` | Notes read budget (oldest truncated). |
+| `historyMaxChars` | `8000` | Per-`history_read` output cap. |
+| `pinMaxChars` | `4000` | Per-pin verbatim cap. |
+| `pinsMaxChars` | `12000` | Total pin cap across both scopes. |
+| `pinsWindowRatio` | `0.05` | Share of the context window pins may occupy. |
+| `nudgeEvery` | `6` | Tool calls between pin reminders. |
+| `suggestCount` | `3` | Oldest task pins named on quota rejection. |
+| `summarizationProvider` / `summarizationModel` / `maxTokens` | — | Optional sketch-call routing, passed through to the official summarizer. |
+
+## Storage
+
+- Task pins: `~/.dsh/context-manager/pins/<sessionId>.json`
+- Workspace pins: `~/.dsh/context-manager/pins/ws/<workspace-slug>.json` (shared by all sessions and subagents of the workspace)
+- Notes: `~/.dsh/context-manager/notes/<sessionId>.md` (legacy `~/.dsh/context-reset/notes/` migrates lazily)
+
+## Design notes
+
+- **Why pins live in the system prompt**: it is the only layer re-assembled on every request — the only place that survives *any* history replacement. The pin section renders last (order 10300, after the official persona suffix) so pin edits invalidate the least KV cache.
+- **Why free + alloc instead of an update tool**: three tools beat four; a changed handle that dangles is explainable, a reused handle is a wrong pointer.
+- **Why the model manages pins itself**: user pinning breaks flow, engine heuristics misfire; the discipline risk is covered by the cadence nudge + quantized budget hints.
+- Supersedes `dsh-context-reset` (same engine, same `/reset`; adds the malloc layer).
 
 ## License
 
-[MIT](LICENSE)
+MIT
