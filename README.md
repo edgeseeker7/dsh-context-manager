@@ -39,6 +39,10 @@ A cadence nudge (every 6 non-memory tool calls, riding tool results so it costs 
 
 Sits next to `/compact` in the input box. Replaces resettable history with the hybrid checkpoint (sketch labeled UNVERIFIED + notes + retrieval instructions), bulk-frees task pins, and reports how many were freed. The official automatic compaction is **not** touched — it stays the default.
 
+### Inspectable checkpoints (web UI)
+
+The stock chat UI only makes `/compact` expandable (its renderer gates on the command name). This plugin ships a small client bundle that registers its own conversation Definition + node renderer through the official multi-claim projection and `conversation.chat.node` slot seams: after a `/reset`, an expandable **"Context window reset"** row appears under the command outcome — click it to read the full injected checkpoint, rendered as markdown. No host code is patched.
+
 ## Quotas (dual gate)
 
 Pins pay rent on every request (they live in the system prompt), so the vault is bounded twice:

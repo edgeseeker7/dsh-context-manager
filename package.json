@@ -1,6 +1,6 @@
 {
   "name": "dsh-context-manager",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Explicit context-memory subsystem for DeepSeek Harness: a four-layer memory model (verbatim pins, durable notes, LLM sketch, full-log retrieval) with a malloc-style tool API (context_alloc/free/list) and an on-demand /reset command next to /compact",
   "keywords": [
     "deepseek-harness",
@@ -25,6 +25,7 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -35,7 +36,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "biome check lib/ && node --check lib/index.js && node --check lib/engine.js && node --check lib/command.js && node --check lib/malloc.js && node --check lib/history.js && node --check lib/notes.js && node test/smoke.mjs",
+    "check": "biome check lib/ && node --check lib/index.js && node --check lib/engine.js && node --check lib/command.js && node --check lib/malloc.js && node --check lib/history.js && node --check lib/notes.js && node --check lib/client.js && node test/smoke.mjs && node test/client-definition.mjs",
     "check:fix": "biome check --write lib/",
     "prepublishOnly": "pnpm run check"
   },
@@ -71,6 +72,14 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ]
     }
   },
   "engines": {
