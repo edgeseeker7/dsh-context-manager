@@ -50,6 +50,7 @@ Durable notes (persisted across resets, newest last):
 
 | 键 | 默认 | 含义 |
 | --- | --- | --- |
+| `llmSummary` | `true` | 重置时生成一次性 LLM 摘要(标注"未验证",失败时降级为纯硬切);`false` 恢复零 LLM 纯硬切 |
 | `budgetHints` | `true` | 显示 25/50/75% 预算提示 |
 | `notesMaxChars` | `8000` | 重置后重新注入的笔记预算（保留最新） |
 | `historyMaxChars` | `8000` | `history_read` 单次输出上限 |

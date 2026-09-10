@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0
+
+- Hybrid checkpoint: `/reset` now asks the LLM for a one-shot sketch of the
+  shadowed span (the official cache-friendly summarization call) and embeds
+  it in the checkpoint — explicitly labeled UNVERIFIED, with durable notes
+  and `history_search` named as authoritative. This bridges continuity when
+  the model's notes are sparse, without reintroducing silent-loss trust.
+  A failed sketch call degrades to the pure hard cut; the reset still
+  completes. New config: `llmSummary` (default `true`; `false` restores the
+  zero-LLM pure cut), plus pass-through of `summarizationProvider`,
+  `summarizationModel` and `maxTokens` to the official summarizer.
+
 ## 0.1.0
 
 - Initial release (renamed from the unpublished `dsh-compaction-hardcut`

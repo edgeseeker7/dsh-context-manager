@@ -10,7 +10,9 @@ An on-demand hard context-window reset for [DeepSeek Harness](https://github.com
 
 Summarization compaction is silently lossy: "never touch this endpoint" compresses into a vague one-liner, and the model doesn't know what it forgot. A hard reset moves the failure mode from *silently forgetting* to *failing to look something up* — visible and debuggable. It also costs **zero** extra tokens (no summary call), and never compounds: the 5th reset is as faithful as the 1st because the original log is never rewritten.
 
-Use `/compact` when you want continuity by summary. Use `/reset` when the window feels polluted and you'd rather the model rebuild from notes + on-demand retrieval.
+Use `/compact` when you want continuity by summary. Use `/reset` when you want a clean window without losing recall.
+
+The difference is how forgetting is handled: `/compact` leaves a single summary — whatever it drops is gone. `/reset` is three layers — a one-shot LLM sketch (explicitly labeled an unverified draft, for continuity), the model's own durable notes (deterministic, authoritative), and the history tools (catching everything the first two drop). If the sketch call fails, the reset degrades to a pure hard cut and still completes; set `llmSummary: false` for the zero-LLM variant.
 
 ## What you get
 
@@ -52,6 +54,7 @@ Optional, on the profile row (`~/.dsh/profiles/<profile>/cordis.yml`):
 
 | key | default | meaning |
 | --- | --- | --- |
+| `llmSummary` | `true` | one-shot LLM sketch at reset (labeled unverified; pure-cut fallback on failure); `false` restores the zero-LLM cut |
 | `budgetHints` | `true` | show the 25/50/75% budget section |
 | `notesMaxChars` | `8000` | notes budget re-injected after a reset (newest kept) |
 | `historyMaxChars` | `8000` | per-call output cap for `history_read` |

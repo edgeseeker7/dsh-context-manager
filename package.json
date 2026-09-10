@@ -1,6 +1,6 @@
 {
   "name": "dsh-context-reset",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "On-demand hard context-window reset for DeepSeek Harness: a /reset command next to /compact — no summarization, the model keeps durable notes and retrieves history on demand",
   "keywords": [
     "deepseek-harness",
