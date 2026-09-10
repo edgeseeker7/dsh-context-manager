@@ -62,6 +62,8 @@ Durable notes (persisted across resets, newest last):
 
 …plus the untouched system prompt and the most recent ~16% of the conversation verbatim.
 
+Fail-safe edge: if the only cuttable span is already smaller than the checkpoint itself (possible near the end of a session with a large retained tail), the official transaction guard skips that cut and the turn continues unchanged — the skip is recorded as a `compaction/end` error in the session log.
+
 ## Compatibility
 
 Requires dsh ≥ 0.1.2-rc.1 (developed and verified on 0.1.5-rc.1). The engine subclasses the official `BasicCompactionEngine`; if a future dsh changes that class's `summarize()` hook signature, this plugin needs a matching update.

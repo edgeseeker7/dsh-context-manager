@@ -60,6 +60,8 @@ Durable notes (persisted across resets, newest last):
 
 外加原封不动的 system prompt 和最近 ~16% 对话的原文。
 
+兜底边界：如果可切区间已经比 checkpoint 本身还小（会话尾部保留很大时可能出现），官方事务守卫会跳过这次切割、对话原样继续——跳过会以 `compaction/end` 错误事件记在日志里，看得见。
+
 ## 兼容性
 
 需要 dsh ≥ 0.1.2-rc.1（在 0.1.5-rc.1 上开发与验证）。引擎子类化官方 `BasicCompactionEngine`；如果未来 dsh 改变该类的 `summarize()` 钩子签名，本插件需要同步更新。
