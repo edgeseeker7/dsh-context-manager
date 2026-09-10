@@ -76,6 +76,27 @@ pin 住在 system prompt,每次请求都交租,所以保险柜有两道上限:
 - **为什么模型自己管 pin**:用户钉打断心流,引擎启发式会误判;自觉性风险由节拍提醒 + 量化预算提示兜底。
 - 本插件取代 `dsh-context-reset`(同一个引擎、同一个 `/reset`,新增 malloc 层)。
 
+## 兼容性
+
+dsh 官方插件用 `peerDependencies` 声明对自己触碰的 `@deepseek-ai/*` 核心包的版本契约(比如 `dsh-compaction-basic` 声明了八个核心包),本插件遵循同一约定。核心包按发布列车(0.1.x-rc)整体联动,所以一个区间即可覆盖整个宿主。
+
+**支持范围:dsh ≥ 0.1.2-rc.1 且 < 0.2.0。在 0.1.5-rc.1 上开发并验证**(malloc 全链路 headless e2e + dsh web 实测 `/reset`)。
+
+下限来自本插件实际使用的 API 面,已逐一对照各核心版本的发布 tarball 核实:
+
+| 我们使用的 API | 包 | 引入版本 |
+|---|---|---|
+| `SessionSeq` + `session.eventAt()`(history 工具、reset 计数) | `@deepseek-ai/dsh-session` | **0.1.2-rc.1**(0.1.0-rc.8 和 0.1.1-rc.2 都没有) |
+| `BasicCompactionEngine` + `summarize()` 覆写钩子 | `@deepseek-ai/dsh-compaction-basic` | ≤ 0.1.0-rc.8 |
+| `ManualCompactionError` | `@deepseek-ai/dsh-compaction` | ≤ 0.1.0-rc.8 |
+| `defineTool`(带 output schema 的工具注册) | `@deepseek-ai/dsh-tools` | ≤ 0.1.0-rc.8 |
+| `dshHomePath` | `@deepseek-ai/dsh-home-paths` | ≤ 0.1.0-rc.8 |
+| `commands` / `llm` / `tokenMeter` / `sessions` 服务、`agent/created` 事件 | `@deepseek-ai/dsh-commands` 等 | ≤ 0.1.0-rc.8 |
+
+约束瓶颈是 `SessionSeq`,所以所有下限统一对齐到 0.1.2-rc.1。0.1.2 到 0.1.3 按 API 面推断可用,但未持续测试。
+
+关于声明区间的一点说明:npm semver 无法表达"X 之后的所有预发布列车"——在同元组预发布规则下,`>=0.1.2-rc.1 <0.2.0` 严格解析时只认 0.1.2-rc.* 一列,而官方插件的 `^0.1.5-rc.1` 是钉死单列、每次发布重声明。实际上 pnpm 对已装宿主做 peer 检查是宽松的(0.1.5-rc.1 在安装时能满足这些区间),所以这些区间作为"文档化下限"是有效的;本节才是契约意图的权威声明。
+
 ## 许可证
 
 MIT

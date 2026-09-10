@@ -76,6 +76,27 @@ Quota exhaustion rejects the alloc and names the oldest task pins as free candid
 - **Why the model manages pins itself**: user pinning breaks flow, engine heuristics misfire; the discipline risk is covered by the cadence nudge + quantized budget hints.
 - Supersedes `dsh-context-reset` (same engine, same `/reset`; adds the malloc layer).
 
+## Compatibility
+
+Official dsh plugins declare their version contract as `peerDependencies` on the `@deepseek-ai/*` core packages they touch (e.g. `dsh-compaction-basic` peers on eight core packages); this plugin follows the same convention. All core packages ship in lockstep release trains (0.1.x-rc), so one range covers the whole host.
+
+**Supported: dsh ≥ 0.1.2-rc.1, < 0.2.0. Developed and verified on 0.1.5-rc.1** (headless e2e of the full malloc chain + live `/reset` in dsh web).
+
+The floor comes from the exact API surface this plugin uses, checked against the published tarballs of every core release:
+
+| API surface we use | Package | Introduced |
+|---|---|---|
+| `SessionSeq` + `session.eventAt()` (history tools, reset counter) | `@deepseek-ai/dsh-session` | **0.1.2-rc.1** (absent in 0.1.0-rc.8 and 0.1.1-rc.2) |
+| `BasicCompactionEngine` + the `summarize()` override hook | `@deepseek-ai/dsh-compaction-basic` | ≤ 0.1.0-rc.8 |
+| `ManualCompactionError` | `@deepseek-ai/dsh-compaction` | ≤ 0.1.0-rc.8 |
+| `defineTool` (tool registration with output schemas) | `@deepseek-ai/dsh-tools` | ≤ 0.1.0-rc.8 |
+| `dshHomePath` | `@deepseek-ai/dsh-home-paths` | ≤ 0.1.0-rc.8 |
+| Services `commands` / `llm` / `tokenMeter` / `sessions`, event `agent/created` | `@deepseek-ai/dsh-commands` etc. | ≤ 0.1.0-rc.8 |
+
+The binding constraint is `SessionSeq`, so all floors are aligned to 0.1.2-rc.1. Versions 0.1.2 through 0.1.3 are expected to work by API surface but are not continuously tested.
+
+One nuance on the declared ranges: npm semver cannot express "any prerelease train from X onward" — under the same-tuple prerelease rule, `>=0.1.2-rc.1 <0.2.0` strictly resolves only the 0.1.2-rc.* line, while official plugins pin a single train (`^0.1.5-rc.1`) and redeclare every release. In practice pnpm checks peers leniently against an already-installed host (0.1.5-rc.1 satisfies these ranges at install time), so the ranges work as documented floors; this section is the authoritative statement of intent.
+
 ## License
 
 MIT
