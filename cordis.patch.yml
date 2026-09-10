@@ -1,20 +1,7 @@
-# dsh-compaction-hardcut profile patch.
-#
-# 1) Disable the stock ROOT compaction engine (the `compaction-basic` row from
-#    dsh-base). It listens to the same pressure/overflow events for every agent
-#    and registers a root-level `compaction` service; hardcut replaces it.
-#    Preset-isolated engines (standard/cordis/ptc presets) are NOT touched by
-#    this patch — hardcut's lower default threshold (0.75 < 0.8) commits first
-#    in practice, so the stock 80% fallback finds nothing above its threshold.
-#
-# 2) Mount the hardcut engine at root so every agent's lifecycle events reach it
-#    and the root-level `/compact` command resolves to hardcut.
-- id: compaction-basic
-  disabled: true
-
+# dsh-context-reset profile patch: mount the plugin at root. The official
+# compaction engine is deliberately NOT touched — summarizing compaction
+# stays the default, and a hard reset happens only when the user types
+# /reset in the input box.
 - insert:
-    - id: compaction-hardcut
-      name: dsh-compaction-hardcut
-      config:
-        thresholdRatio: 0.75
-        retainRatio: 0.16
+    - id: context-reset
+      name: dsh-context-reset

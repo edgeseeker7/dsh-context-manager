@@ -2,15 +2,19 @@
 
 ## 0.1.0
 
-- Initial release: hard context-window reset engine for DeepSeek Harness.
-  - `HardcutEngine` subclasses the official `BasicCompactionEngine`: trigger
-    policy (pre-step pressure, context-overflow recovery, `/compact`), the
-    durable compaction transaction, and tool-pairing balance checks are all
-    reused; `summarize()` is the only overridden hook and makes no LLM call.
-  - Replacement checkpoint = fixed reset notice + the agent's durable notes.
+- Initial release (renamed from the unpublished `dsh-compaction-hardcut`
+  prototype, redesigned as an on-demand command):
+  - `/reset` slash command next to the official `/compact`: one hard
+    context-window reset, user-invoked only. The official summarizing
+    compaction stays the default — nothing is disabled or pre-empted, and
+    the engine is constructed with `auto: false` on an isolated service
+    plane so it never registers a second root `compaction` service.
+  - `ContextResetEngine` subclasses the official `BasicCompactionEngine`:
+    the durable compaction transaction (tool-pairing balance, checkpoint
+    framing, log markers) is reused; `summarize()` is the only overridden
+    hook and makes no LLM call. The replacement checkpoint is a fixed reset
+    notice carrying the agent's durable notes.
   - Agent tools: `history_search`, `history_read`, `notes_append`,
-    `notes_read`, `new_context` (model-initiated reset at the next step
-    boundary).
-  - Quantized budget hint section (25/50/75% bands) that only changes at
-    crossings, keeping the provider KV cache intact.
-  - Notes persisted per session under `~/.dsh/compaction-hardcut/notes/`.
+    `notes_read` — recall survives both `/reset` and official compaction.
+  - Cache-stable quantized budget hint section (25/50/75% bands).
+  - Notes persisted per session under `~/.dsh/context-reset/notes/`.
