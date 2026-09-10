@@ -1,0 +1,5 @@
+# Dev installs only need @biomejs/biome: the @deepseek-ai/* peers are supplied
+# by the host dsh profile at runtime, and auto-installing them pulls a
+# transitive peer range (@deepseek-ai/dsh-invariants >=0.1.2) that has no
+# satisfying release on npm.
+autoInstallPeers: false
