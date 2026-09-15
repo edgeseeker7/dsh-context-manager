@@ -1,6 +1,42 @@
 # Changelog
 
+## 1.2.0
+
+- Pin scopes renamed in the system prompt and reset flow: task pins are now
+  `t*` (cleared by `/reset`, with the cleanup count stated in the reset
+  text) and permanent pins are `w*` (survive `/reset`, shared across this
+  workspace's sessions).
+- Quota is derived from the context window of the model the agent is
+  actually routed to: the engine resolves the routed provider/model from
+  the session request header (falling back to agent options) and computes
+  the pins budget per resolved target, so a model switch can no longer
+  strand pins above the new model's budget.
+- `nudgeEvery` default raised 6 → 20; the nudge text now names both memory
+  actions (pin verbatim facts with `context_alloc`, record progress with
+  `notes_append`) instead of only pushing pins.
+- New `lib/lock.js`: cross-process mutex for the on-disk pin and notes
+  stores. Two Harness processes (or Harness plus a headless script) that
+  write the same store used to lose the slower writer's update silently;
+  the stores now serialize on an O_EXCL lockfile with stale-lock reclaim.
+- `history_read` accepts an `offset` char cursor for continuing a read
+  that was cut inside one oversized event; the truncation footer spells
+  out the remaining chars and the exact next call. Empty queries in
+  `history_search` short-circuit instead of scanning.
+- Store layer hardening in `malloc.js`/`notes.js`: monotonic handle
+  validation, defensive reload on external change, and clearer rejection
+  messages naming the pins to free.
+- Tests: 4 suites (`smoke`, `history`, `command`, `client-definition`),
+  all green via `pnpm check`.
+
+## 1.1.0
+
+- Web chat renders `/reset` checkpoints as expandable items (parity with
+  `/compact`): the context-manager client package registers a reset-aware
+  conversation definition plus a slot renderer, so the full checkpoint is
+  inspectable in the chat timeline instead of a one-line marker.
+
 ## 1.0.0
+
 
 - Renamed to **dsh-context-manager**: the plugin grows from "a `/reset`
   command" into a full context-memory subsystem — four memory layers
