@@ -1,6 +1,31 @@
 # Changelog
 
+## 1.3.0
+
+- `history_search` rewritten as hybrid matching after trace analysis of the
+  Probing-Bench-v1 eval showed the old literal full-string `indexOf` missed
+  every natural multi-term query, and newest-first-with-cap let the current
+  turn (probe text + the agent's own search calls) flood the result budget:
+  - Three tiers: exact phrase (tier 0) → all whitespace-separated terms in
+    the event (tier 1) → some terms (tier 2, only when no tier-0/1 hit
+    exists). Within a tier: hit count, then density (shorter events), then
+    recency — the same ranking shape as the official SQLite FTS5 session
+    query (match_count / document_length / time).
+  - The agent's own memory-tool calls and results (history/pins/notes) are
+    excluded from the corpus by default; `includeSelf: true` opts back in.
+  - New `beforeSeq` parameter bounds the scan below a known seq (e.g. the
+    current turn), and every match reports the char `offset` of its anchor
+    hit so `history_read` can continue from the exact spot.
+  - `tool-result` blocks are unwrapped before indexing: search text and
+    snippets show the tool's actual output, not the JSON envelope.
+  - A/B on the real eval session: the query containing the literal answer
+    that previously surfaced "only the current turn" now returns the
+    fact-holding events directly.
+- Tests: `test/history.mjs` gains the hybrid-matching suite (14
+  assertions, 132 total across 4 suites).
+
 ## 1.2.0
+
 
 - Pin scopes renamed in the system prompt and reset flow: task pins are now
   `t*` (cleared by `/reset`, with the cleanup count stated in the reset

@@ -107,6 +107,74 @@ ok(
   'a toSeq past the log is clamped to the last event',
 );
 
+
+
+// ── hybrid matching: phrase > all-terms AND > some terms (v1.3.0) ─────────
+const toolCall = (name, callId) => ({ type: 'tool/call', data: { name, callId, arguments: '{}' } });
+const toolResult = (callId, text) => ({
+  type: 'tool/result',
+  data: { message: { source: { kind: 'tool', callId }, content: [{ type: 'tool-result', toolCallId: callId, content: [{ type: 'text', text }], isError: false }] } },
+});
+
+// The compact-007 contamination pattern: the probe message shares some terms
+// with the historical event, and the agent's own memory-tool traffic matches too.
+const histText = '在 BasicInfoOverlayEntry.kt 的 on关闭 回调里调用 bviewmodel.photoCoordinator.清除照片管理目标()，违反 plan.md 的域隔离约束';
+const probeText = 'In the code snippets from RecordOverlayEntry.kt and BasicInfoOverlayEntry.kt, what specific method is called on photoCoordinator inside the close callbacks?';
+const hybridSession = fakeSession([
+  userMessage('早期上下文'),
+  toolResult('other-1', histText), // seq 1: the real historical hit (terms non-adjacent)
+  assistantMessage('...'),
+  userMessage(probeText), // seq 3: probe — has BasicInfoOverlayEntry + photoCoordinator but not the answer
+  toolCall('history_search', 'self-1'), // seq 4: agent's own search call
+  toolResult('self-1', `some snippet mentioning photoCoordinator`), // seq 5: its result
+]);
+
+// 1) a query whose terms never appear as one phrase still hits via term-AND
+const andHit = historySearch(hybridSession, { query: '照片管理目标 BasicInfoOverlayEntry on关闭' });
+ok(andHit.matches.length > 0 && andHit.matches[0].seq === 1, 'multi-term query matches an event whose terms are not adjacent');
+ok(andHit.matches[0].tier === 1, 'term-AND match is reported as tier 1');
+ok(andHit.matches.every((m) => m.seq !== 4 && m.seq !== 5), 'own memory-tool calls and results are excluded by default');
+
+// 2) partial-term events only surface when no all-term match exists
+const partialOnly = historySearch(hybridSession, { query: 'photoCoordinator 绝不存在的词' });
+ok(partialOnly.matches.length > 0 && partialOnly.matches[0].tier === 2, 'partial-term events surface only as tier 2 fallback');
+ok(partialOnly.matches.some((m) => m.seq === 1 || m.seq === 3), 'tier 2 includes events matching some terms');
+const noTier2 = historySearch(hybridSession, { query: '照片管理目标 BasicInfoOverlayEntry' });
+ok(noTier2.matches.length > 0 && noTier2.matches.every((m) => m.tier !== 2), 'no tier-2 noise when all-term matches exist');
+
+// 3) exact phrase ranks tier 0 above term-AND
+const phraseSession = fakeSession([
+  userMessage('alpha beta 出现在同一句里'),
+  userMessage('alpha 在这里出现, 中间隔着很多内容, 最后才是 beta'),
+]);
+const phraseHit = historySearch(phraseSession, { query: 'alpha beta' });
+ok(phraseHit.matches[0].seq === 0 && phraseHit.matches[0].tier === 0, 'an exact phrase hit ranks tier 0 above term-AND');
+
+// 4) single-term behaviour is unchanged (backward compatible)
+const single = historySearch(hybridSession, { query: 'photocoordinator' });
+ok(single.matches.length > 0 && single.matches.every((m) => m.tier === 0), 'single-term query stays phrase semantics (tier 0)');
+ok(single.matches.every((m) => m.seq !== 4 && m.seq !== 5), 'single-term also excludes self traffic');
+
+// 5) beforeSeq bounds the scan below the current turn
+const bounded = historySearch(hybridSession, { query: 'photoCoordinator', beforeSeq: 3 });
+ok(bounded.matches.length > 0 && bounded.matches.every((m) => m.seq < 3), 'beforeSeq excludes the current turn from results');
+
+// 6) includeSelf opts back into self-matching
+const withSelf = historySearch(hybridSession, { query: 'photoCoordinator', includeSelf: true });
+ok(withSelf.matches.some((m) => m.seq === 4 || m.seq === 5), 'includeSelf: true re-admits own tool traffic');
+
+// 7) matches carry a char offset pointing at the hit
+ok(typeof andHit.matches[0].offset === 'number' && histText.indexOf('照片管理目标') >= 0, 'match offset is a char index');
+const offsetText = histText.slice(andHit.matches[0].offset);
+ok(offsetText.includes('照片管理目标') || offsetText.includes('BasicInfoOverlayEntry') || offsetText.includes('on关闭'), 'history_read can continue from the reported offset at the hit');
+
+// 8) density ordering inside one tier: more occurrences and shorter text first
+const denseSession = fakeSession([
+  userMessage(`hit 只在长文里出现一次 ${'x'.repeat(800)}`),
+  userMessage('hit hit hit 短文多次'),
+]);
+const dense = historySearch(denseSession, { query: 'hit' });
+ok(dense.matches[0].seq === 1, 'denser event (more hits, shorter text) outranks a sparse long one');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
-
