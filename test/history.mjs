@@ -1,7 +1,7 @@
 /* dsh-context-manager history tools: pure event fixtures, no harness needed.
  * Covers requirement 4 — full-text search, event-internal paging, explicit
  * truncation markers — plus the seq/arg edge cases the review flagged. */
-import { eventText, historyRead, historySearch } from '../lib/history.js';
+import { eventText, historyRead, historySearch, historySearchAsync } from '../lib/history.js';
 
 let passed = 0;
 let failed = 0;
@@ -181,6 +181,16 @@ const fullScan = historySearch(hybridSession, { query: 'photoCoordinator' });
 ok(fullScan.scanned === hybridSession.seq, 'a full scan reports every event');
 ok(bounded.scanned === 3, 'beforeSeq: scanned counts only the bounded range (seqs 0..2)');
 ok(historySearch(hybridSession, { query: '' }).scanned === 0, 'an empty query scans nothing');
+
+// ── v1.5.0: async search is result-identical and yields across chunks ────
+const bigEvents = [userMessage(`needle deep target ${'z'.repeat(50)}`)];
+for (let index = 0; index < 4500; index += 1) bigEvents.push(userMessage(`filler event ${index} ${'f'.repeat(40)}`));
+bigEvents.push(userMessage('needle at the tail'));
+const bigSession = fakeSession(bigEvents);
+const syncResult = historySearch(bigSession, { query: 'needle' });
+const asyncResult = await historySearchAsync(bigSession, { query: 'needle' });
+ok(JSON.stringify(asyncResult) === JSON.stringify(syncResult), 'async search returns the identical result');
+ok(asyncResult.scanned === bigEvents.length && asyncResult.scanned > 4000, 'the scan crossed several yield chunks');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

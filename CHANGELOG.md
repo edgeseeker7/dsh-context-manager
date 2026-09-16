@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.5.0
+
+Performance + discoverability, from the three-agent audit's high findings:
+
+- **Notes performance (the O(N²) audit finding)**: `append` now renders the
+  post-write view from the entries already in memory — no second disk read,
+  no second parse; `fileChars` comes from `statSync` instead of a third
+  full-file read; view truncation runs on a running total instead of
+  re-joining the block list per dropped entry.
+- **Vault render-time gate (two audit agents converged here)**: `render`
+  takes a cap evaluated with the READER's window quota (lazily resolved and
+  cached per route, falling back to the config cap until it lands). Alloc
+  is only a write-time admission gate — a workspace vault filled by a
+  big-window session could otherwise inject several times a small-window
+  session's quota into every request. Overflowing pins are omitted LOUDLY:
+  a `[vault overflow: N pins omitted (t2, w7) …]` line naming the handles,
+  never a silent truncation; they stay allocated and visible in
+  context_list.
+- **history_search no longer blocks the event loop**: the scan core is now
+  a generator yielding every 2000 events; the registered tool drives it
+  asynchronously (`setImmediate` between chunks), so a seconds-long wide
+  scan keeps the GUI and sibling agents responsive. The sync
+  `historySearch` export is unchanged for tests and scripts.
+- **mechanicalState streams anchors**: per-event extraction via
+  `createAnchorExtractor` with no accumulated corpus — a sliced string
+  keeps its parent text alive, so the old `corpus +=` rope pinned every
+  event text in the 200-event window until the reset returned.
+- **Discoverability**: `notes_read({ listTags: true })` enumerates every
+  bucket with its active-note count (bucket names can no longer be lost
+  when old notes truncate away); the truncation marker now LISTS the
+  dropped note ids and teaches the `notes_read({ id })` escape hatch.
+- **Copy closes the loops**: RULES_TEXT and the cadence nudge teach
+  listTags / bucket reuse / sourceSeq citing; `history_read`'s description
+  now says a `seq: N` pointer reads directly with `fromSeq = toSeq = N`.
+- **Hygiene**: lock stale threshold 10s → 60s (a slow notes critical
+  section must never be reclaimed mid-write); startup sweep removes
+  crash-abandoned `*.tmp` write stubs older than a day (live stores and
+  quarantine files are never touched).
+- Tests: listTags / dropped-ids marker / render cap / async-search
+  equivalence across yield chunks (215 total across 6 suites).
+
 ## 1.4.2
 
 Correctness hotfixes from the three-agent audit (memory/GC, free mechanism,

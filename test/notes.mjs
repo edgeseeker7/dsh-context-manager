@@ -188,5 +188,22 @@ await store.append('persist-session', 'fresh note');
 ok(readFileSync(join(rescueDir, 'persist-session.jsonl'), 'utf8').includes('late md note'), 'append persists the merge under the lock');
 ok(store.read('persist-session').split('late md note').length === 2, 'persisted merge does not duplicate on later reads');
 
+// ── v1.5.0: listTags enumerates the buckets ───────────────────────────────
+const buckets = store.read(SESSION, { listTags: true });
+ok(buckets.includes('#eval') && buckets.includes('#pcg'), 'listTags shows the invented buckets');
+ok(/#eval \(\d+ active\)/.test(buckets), 'listTags counts active notes per bucket');
+ok(!buckets.includes('#deploy (0'), 'buckets with only superseded notes are not listed as active');
+ok(store.read('empty-tags-session', { listTags: true }) === '(no tags yet)', 'listTags on an empty diary says so');
+
+// ── v1.5.0: the truncation marker names the dropped ids and the way back ──
+const named = new NotesStore(75);
+await named.append('named-session', 'first body aaa');
+await named.append('named-session', 'second body bbb');
+await named.append('named-session', 'third body ccc');
+const namedView = named.read('named-session');
+ok(namedView.includes('(n1)'), 'the drop marker lists the dropped note ids');
+ok(namedView.includes('notes_read({ id })'), 'the drop marker teaches the by-id escape hatch');
+ok(named.read('named-session', { id: 'n1' }).includes('first body aaa'), 'a dropped note is still reachable by id');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

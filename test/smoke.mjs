@@ -244,6 +244,19 @@ noisy.load(stormPath);
 chmodSync(stormDir, 0o755);
 ok(warnings.filter((w) => w.includes('sess-storm')).length === 1, 'failed quarantine rename warns once per file per process');
 
+// ── v1.5.0: render-time cap omits overflowing pins LOUDLY ────────────────
+const capStore = new PinStore({ pinMaxChars: 4000, pinsMaxChars: 100000, windowRatio: 0.05, suggestCount: 1 });
+await capStore.alloc({ sessionId: 'cap-session', cwd: '/cap', text: 'small fact one', label: 'one', scope: 'permanent' });
+await capStore.alloc({ sessionId: 'cap-session', cwd: '/cap', text: 'y'.repeat(300), label: 'big', scope: 'task' });
+await capStore.alloc({ sessionId: 'cap-session', cwd: '/cap', text: 'small fact two', label: 'two', scope: 'task' });
+const capped = capStore.render('cap-session', '/cap', 120);
+ok(capped.includes('[w1]'), 'the first pin always renders');
+ok(capped.includes('vault overflow'), 'overflowing pins produce a loud overflow line');
+ok(!capped.includes('y'.repeat(300)), 'the oversized pin body is omitted');
+ok(capped.includes('small fact two'), 'pins under the cap still render after an omission');
+ok(/t1/.test(capped.split('vault overflow')[1] ?? ''), 'the overflow line names the omitted handles');
+ok(capStore.render('cap-session', '/cap').includes('y'.repeat(300)), 'without a cap everything still renders (backward compatible)');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
 
