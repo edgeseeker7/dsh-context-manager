@@ -33,8 +33,8 @@ DeepSeek Harness 的显式上下文内存子系统。一个插件,四层内存,�
 | `context_free(handle)` | 释放一个 pin。句柄单调递增——被释放的句柄是悬空的;只有损坏(已隔离并告警)的存储才会重置计数器。 |
 | `context_list()` | 分配表:每个 pin 的句柄/标签/计费大小/年龄 + 配额占用。 |
 | `notes_append(text[, supersedes, tags, sourceSeq])` | 持久日记,JSONL 只追加,每条有稳定 id(`n7`)。三个可选的"边"是模型自己造结构的原语:`supersedes` 让被取代的旧笔记折叠成一行审计条目(版本链),`tags` 把笔记装进自建的桶,`sourceSeq` 指向来源日志事件。 |
-| `notes_read([listTags, id, tag, includeSuperseded])` | 读日记:默认显示活跃笔记 + 折叠的已取代条目;`listTags` 枚举全部桶及活跃条数,`id` 逐字取单条(含链状态,也是被截断笔记的逃生口),`tag` 只读一个桶,`includeSuperseded` 展开折叠条目全文。 |
-| `history_search(query[, limit, beforeSeq])` | 混合匹配的全日志搜索,含被压缩/切掉的段落:整串短语 → 全词命中 → 部分词三档,按密度排序,默认排除自己的记忆工具流量(`includeSelf` 可加回)。命中带字符 `offset` 可续读。 |
+| `notes_read([listSessions, session, listTags, id, tag, includeSuperseded])` | 读日记(按会话隔离):`listSessions` 发现本工作区其他会话的日记,`session` 读其中一本(只读);`listTags` 枚举桶,`id` 逐字取单条(被截断笔记的逃生口),`tag` 只读一个桶,`includeSuperseded` 展开折叠条目。空日记且工作区有旧日记时,返回会指路。 |
+| `history_search(query[, limit, beforeSeq, includeCurrentTurn])` | 混合匹配的全日志搜索,含被压缩/切掉的段落:整串短语 → 全词命中 → 部分词三档,按密度排序。默认排除自己的记忆工具流量和当前轮事件(`includeSelf`/`includeCurrentTurn` 可加回)。checkpoint/摘要命中带压缩内容标记。命中带字符 `offset` 可续读,输出显示 tier 和命中池深度。 |
 | `history_read(fromSeq, toSeq[, offset])` | 精确区间读;单条超长事件的读取被截断时,用截断标记给出的 `offset` 续读。 |
 
 节拍提醒(每 20 次非内存类工具调用一次,搭在工具结果里、使 prompt 前缀保持可缓存)提醒模型钉逐字关键事实、记提炼过的进展——和 dsh-subagent-progress 里让 notify_user 汇报可靠的是同一个模式。
