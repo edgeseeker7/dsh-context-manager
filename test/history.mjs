@@ -176,5 +176,11 @@ const denseSession = fakeSession([
 const dense = historySearch(denseSession, { query: 'hit' });
 ok(dense.matches[0].seq === 1, 'denser event (more hits, shorter text) outranks a sparse long one');
 
+// ── v1.4.0: scanned reports the events actually scanned ──────────────────
+const fullScan = historySearch(hybridSession, { query: 'photoCoordinator' });
+ok(fullScan.scanned === hybridSession.seq, 'a full scan reports every event');
+ok(bounded.scanned === 3, 'beforeSeq: scanned counts only the bounded range (seqs 0..2)');
+ok(historySearch(hybridSession, { query: '' }).scanned === 0, 'an empty query scans nothing');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

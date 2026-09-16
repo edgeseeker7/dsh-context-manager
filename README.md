@@ -16,8 +16,9 @@ When the context window fills up, the official compaction replaces old history w
            also survive /reset, while t* task pins are cleared by it.
 ② diary   notes: the model's distilled prose, in a session file.
            Re-injected into the /reset checkpoint.
-③ sketch  the /reset checkpoint: LLM summary labeled UNVERIFIED
-           + notes + retrieval instructions.
+③ sketch  the /reset checkpoint: a deterministic mechanical section
+           (pins cleared/active, last user message, frequent ids/paths/urls)
+           + LLM summary labeled UNVERIFIED + notes + retrieval instructions.
 ④ swap    the full session log. Nothing is ever deleted;
            history_search / history_read page anything back in.
 ```
@@ -28,11 +29,13 @@ Reclamation policies: **pin = mlock, official compact = summarizing GC, /reset =
 
 | Tool | Semantics |
 |------|-----------|
-| `context_alloc(text, label, scope)` | Pin a verbatim fact, returns a handle (`t*`/`w*`). `scope: "task"` (default) dies with `/reset`; `"permanent"` persists across sessions of this workspace. |
+| `context_alloc(text, label, scope[, sourceSeq])` | Pin a verbatim fact, returns a handle (`t*`/`w*`). `scope: "task"` (default) dies with `/reset`; `"permanent"` persists across sessions of this workspace. `sourceSeq` records the log event the fact came from (shown by `context_list`, never in the vault text). |
 | `context_free(handle)` | Release a pin. Handles are monotonic — a freed handle dangles; only a corrupt, quarantined store can restart the counter (and it says so). |
 | `context_list()` | Allocation table: every pin with handle/label/billed size/age, plus quota usage. |
-| `notes_append(text)` / `notes_read()` | Durable diary (append-only). |
-| `history_search(query)` / `history_read(fromSeq, toSeq[, offset])` | Full-log retrieval, shadowed events included; a read cut inside an oversized event continues with the `offset` its truncation marker reports. |
+| `notes_append(text[, supersedes, tags, sourceSeq])` | Durable diary, append-only JSONL with stable note ids (`n7`). The three optional edges are the model's structure-building primitives: `supersedes` folds replaced notes into one-line audit entries (version chains), `tags` files notes into self-invented buckets, `sourceSeq` points at the source log event. |
+| `notes_read([tag, includeSuperseded])` | Read the diary: active notes plus folded superseded one-liners by default; filter to one bucket with `tag`, expand folded notes with `includeSuperseded`. |
+| `history_search(query[, limit, beforeSeq])` | Hybrid full-log search, shadowed events included: exact phrase → all-terms → some-terms tiers, density-ranked, own memory-tool traffic excluded (`includeSelf` opts back in). Matches carry a char `offset` into the hit. |
+| `history_read(fromSeq, toSeq[, offset])` | Exact range read; a read cut inside an oversized event continues with the `offset` its truncation marker reports. |
 
 A cadence nudge (every 20 non-memory tool calls, riding tool results so the prompt prefix stays cacheable) reminds the model to pin verbatim-critical facts and note distilled progress — the same pattern that made `notify_user` reporting reliable in dsh-subagent-progress.
 
@@ -75,7 +78,7 @@ Quota exhaustion rejects the alloc and names the oldest task pins as free candid
 
 - Task pins: `~/.dsh/context-manager/pins/<sessionId>.json`
 - Workspace pins: `~/.dsh/context-manager/pins/ws/<workspace-hash>.json` — sha256 of the normalized cwd (16 hex chars), shared by all sessions and subagents of that workspace; v1.1.0 slug-named files migrate on first touch
-- Notes: `~/.dsh/context-manager/notes/<sessionId>.md` — the legacy `~/.dsh/context-reset/notes/` copy migrates before the first read or append, and an already-written new file is merged (never clobbered)
+- Notes: `~/.dsh/context-manager/notes/<sessionId>.jsonl` (v1.4.0+) — one structured note per line. The v1 markdown diary and the legacy `~/.dsh/context-reset/notes/` copy lazily migrate to numbered entries on first touch (merged, never clobbered); the originals are left untouched
 - Every pin/notes mutation runs under a `node:fs`-only O_EXCL lockfile (stale-lock reclaim + bounded retries), so two Harness processes cannot interleave a read-modify-write. No npm runtime dependency is added.
 - A corrupt pin store is renamed to `<file>.corrupt-<timestamp>` with a warning and restarted empty; the handle counter is salvaged from the raw text when possible.
 
@@ -84,6 +87,7 @@ Quota exhaustion rejects the alloc and names the oldest task pins as free candid
 - **Why pins live in the system prompt**: it is the only layer re-assembled on every request — the only place no history replacement can shadow. (Pins leave only when explicitly freed, or when `/reset` clears the `t*` task scope.) The pin section renders last (order 10300, after the official persona suffix) so pin edits invalidate the least KV cache.
 - **Why free + alloc instead of an update tool**: three tools beat four; a changed handle that dangles is explainable, a reused handle is a wrong pointer.
 - **Why the model manages pins itself**: user pinning breaks flow, engine heuristics misfire; the discipline risk is covered by the cadence nudge + quantized budget hints.
+- **Why edges instead of structures**: the plugin's job is storage, not taxonomy. `supersedes`/`tags`/`sourceSeq` are three edge types — chains, buckets, back-pointers — from which the model assembles whatever structure the task needs; a hard-coded structure would freeze one taxonomy in place. The same argument put the deterministic mechanical section ahead of the LLM sketch in the `/reset` checkpoint: exact strings (ids, paths, urls) survive verbatim even when the sketch paraphrases.
 - Supersedes `dsh-context-reset` (same engine, same `/reset`; adds the malloc layer).
 
 ## Compatibility

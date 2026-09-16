@@ -1,0 +1,108 @@
+/* dsh-context-manager structured notes (v1.4.0): supersedes chains, tag
+ * buckets, sourceSeq provenance, JSONL migration. DSH_HOME redirected to a
+ * temp dir so nothing touches real user data. */
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+
+const home = mkdtempSync(join(tmpdir(), 'dsh-cm-notes-'));
+process.env.DSH_HOME = home;
+
+const { NotesStore, parseLegacyMarkdown } = await import('../lib/notes.js');
+
+let passed = 0;
+let failed = 0;
+function ok(cond, name) {
+  if (cond) {
+    passed += 1;
+    console.log(`  ok ${name}`);
+  } else {
+    failed += 1;
+    console.error(`FAIL ${name}`);
+  }
+}
+
+const SESSION = 'sess-notes';
+const store = new NotesStore(8000);
+
+// ── sequential ids and basic render ───────────────────────────────────────
+const a1 = await store.append(SESSION, 'first decision: use JSONL');
+ok(a1.accepted === true && a1.id === 'n1', 'first note gets n1');
+const a2 = await store.append(SESSION, 'second decision: derived views only, because a stored copy rots whenever the log and the copy drift apart');
+ok(a2.id === 'n2', 'second note gets n2');
+ok(a2.fileChars > 0 && a2.viewChars > 0, 'append reports file and view sizes');
+const view = store.read(SESSION);
+ok(view.includes('[n1') && view.includes('first decision') && view.includes('[n2'), 'both notes render with ids');
+
+// ── supersedes: the version chain folds the old note ──────────────────────
+const a3 = await store.append(SESSION, 'corrected: views are derived, not stored', { supersedes: ['n2'] });
+ok(a3.accepted === true && a3.id === 'n3', 'correction appends as n3');
+const folded = store.read(SESSION);
+ok(!folded.includes('drift apart'), 'superseded note folds to an 80-char preview (tail leaves the view)');
+ok(folded.includes('[n2 → n3]'), 'folded audit line points at the successor');
+ok(folded.includes('corrected: views are derived'), 'the correction is active');
+
+// ── chain: ultimate successor wins ────────────────────────────────────────
+await store.append(SESSION, 'final wording: the log is truth, views derive', { supersedes: ['n3'] });
+const chained = store.read(SESSION);
+ok(chained.includes('[n2 → n4]') && chained.includes('[n3 → n4]'), 'chain folds both ancestors to the ultimate successor');
+const expanded = store.read(SESSION, { includeSuperseded: true });
+ok(expanded.includes('second decision: derived views only'), 'includeSuperseded expands the folded text back');
+
+// ── supersedes validation: dangling and malformed edges reject ────────────
+const bad1 = await store.append(SESSION, 'dangling', { supersedes: ['n99'] });
+ok(bad1.accepted === false && bad1.reason.includes('n99'), 'unknown supersedes target rejects with the id named');
+const bad2 = await store.append(SESSION, 'malformed', { supersedes: ['x1'] });
+ok(bad2.accepted === false && bad2.reason.includes('x1'), 'malformed supersedes id rejects');
+const bad3 = await store.append(SESSION, '   ');
+ok(bad3.accepted === false, 'empty note rejects');
+
+// ── tags: hash buckets the model invents ──────────────────────────────────
+await store.append(SESSION, 'eval result: reset arm 70%', { tags: ['Eval', 'pcg'] });
+await store.append(SESSION, 'deploy note: chamber serves the page', { tags: ['deploy'] });
+const evalBucket = store.read(SESSION, { tag: 'eval' });
+ok(evalBucket.includes('reset arm 70%') && !evalBucket.includes('chamber'), 'tag filter reads one bucket only');
+ok(store.read(SESSION, { tag: 'no-such-tag' }) === '', 'an unknown bucket reads empty');
+const allTags = store.read(SESSION);
+ok(allTags.includes('#eval #pcg'), 'tags render normalized (lowercase) next to the note id');
+
+// ── sourceSeq: provenance pointer renders ─────────────────────────────────
+await store.append(SESSION, 'fact with provenance', { sourceSeq: 179 });
+ok(store.read(SESSION).includes('seq:179'), 'sourceSeq renders as a seq pointer');
+const badSeq = await store.append(SESSION, 'bad provenance', { sourceSeq: -3 });
+ok(badSeq.accepted === true && !store.read(SESSION).includes('seq:-3'), 'negative sourceSeq is ignored, note still records');
+
+// ── legacy markdown parsing (incl. leading marker) ────────────────────────
+const parsed = parseLegacyMarkdown('<!-- 2026-09-11T01:00:00.000Z -->\nalpha note\n\n<!-- 2026-09-12T02:00:00.000Z -->\nbeta note\n');
+ok(parsed.length === 2 && parsed[0].text === 'alpha note' && parsed[0].ts.startsWith('2026-09-11'), 'leading-marker markdown parses into dated entries');
+ok(!parsed[0].text.includes('<!--'), 'the marker never leaks into entry text');
+ok(parseLegacyMarkdown('hand-written, no markers').length === 1, 'marker-less text becomes one entry');
+
+// ── v1 markdown migration ─────────────────────────────────────────────────
+const migDir = join(home, 'context-manager', 'notes');
+mkdirSync(migDir, { recursive: true });
+writeFileSync(join(migDir, 'mig-session.md'), '\n\n<!-- 2026-09-11T01:00:00.000Z -->\nold decision one\n\n<!-- 2026-09-12T02:00:00.000Z -->\nold decision two\n');
+const migView = store.read('mig-session');
+ok(migView.includes('old decision one') && migView.includes('[n1') && migView.includes('[n2'), 'v1 markdown migrates to numbered entries');
+const continued = await store.append('mig-session', 'new note after migration');
+ok(continued.id === 'n3', 'the id counter continues after migration');
+ok(readFileSync(join(migDir, 'mig-session.md'), 'utf8').includes('old decision one'), 'the original markdown is left untouched');
+
+// ── corrupt line: skipped with a warning, survivors readable ─────────────
+const warnings = [];
+const noisy = new NotesStore(8000, { logger: { warn: (m) => warnings.push(String(m)) } });
+const corruptPath = join(migDir, 'corrupt-session.jsonl');
+writeFileSync(corruptPath, '{"id":"n1","ts":"","text":"good note"}\n{"id":"n2",BROKEN\n{"id":"n3","ts":"","text":"survivor"}\n');
+const corruptView = noisy.read('corrupt-session');
+ok(corruptView.includes('good note') && corruptView.includes('survivor'), 'corrupt line skipped, valid notes survive');
+ok(warnings.some((w) => w.includes('corrupt note line')), 'the corrupt line is reported, not silent');
+const afterCorrupt = await noisy.append('corrupt-session', 'fresh note');
+ok(afterCorrupt.id === 'n4', 'id counter survives corrupt lines (max id wins)');
+
+// ── truncation safety valve still works on the structured view ────────────
+const tiny = new NotesStore(60);
+await tiny.append('tiny-session', 'x'.repeat(200));
+ok(tiny.read('tiny-session').includes('earlier chars not shown'), 'over-budget views truncate with an explicit marker');
+
+console.log(`\n${passed} passed, ${failed} failed`);
+process.exit(failed === 0 ? 0 : 1);

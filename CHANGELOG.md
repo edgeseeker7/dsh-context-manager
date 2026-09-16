@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.4.0
+
+Design review verdict: the four-layer model had storage but no structure —
+pins and notes were isolated free-text islands, and the data structures in
+the design docs (version chains, buckets, provenance) were interpretations,
+not mechanisms. This release writes them into the stores:
+
+- **Structured notes (JSONL)**: one note per line with a stable id (`n7`),
+  timestamp, and three optional edge types the model uses to build its own
+  structures on top of the flat log — the plugin stores edges, the model
+  invents the graph:
+  - `supersedes` — version chains. A correction names the notes it
+    replaces; superseded notes fold into one-line audit entries pointing at
+    their ultimate active successor (`[n2 → n4]`), so stale conclusions
+    stop being injected while staying recoverable
+    (`notes_read({ includeSuperseded: true })`). Dangling or malformed
+    targets reject the append with the reason named.
+  - `tags` — hash buckets. Free-form short labels (normalized, ≤8 per
+    note); `notes_read({ tag })` reads one bucket. The taxonomy is the
+    model's to invent.
+  - `sourceSeq` — provenance. A note (and now a pin, via `context_alloc`)
+    can point at the log event it was distilled from, rendered as a
+    `seq:179` pointer for later `history_read` verification. Pin provenance
+    shows in `context_list`, never in the verbatim vault text.
+- **v1 diary migration**: the old markdown diary lazily converts to
+  numbered JSONL entries on first touch (leading-marker and hand-written
+  preludes handled; legacy `context-reset` files merge without
+  duplication); the original markdown is left untouched.
+- **Mechanical checkpoint section (B2)**: the `/reset` checkpoint gains a
+  deterministic, no-LLM section ahead of the sketch — the t* pins this
+  reset clears (an index of what was deliberately kept, so it can be
+  re-derived), the w* pins still active, the last real user message, and
+  the most frequent ids/paths/urls in the shadowed span (`extractAnchors`,
+  pure). Direct fix for the trace-proven failure where the LLM sketch
+  omitted a method name and the agent hallucinated after the reset: exact
+  strings now survive verbatim even when the sketch paraphrases. Every
+  extractor is independently guarded — a failure degrades one line, never
+  the reset.
+- **Search robustness (C5/C6)**: `history_search` candidates no longer hold
+  every matching event's full text through the sort — only ranking fields;
+  snippets re-read the few winners (a broad query on a large log can no
+  longer pin hundreds of MB). `scanned` now reports the events actually
+  scanned instead of the session length.
+- Protocol text and the cadence nudge teach the new edges (supersede stale
+  notes instead of contradicting them).
+- Tests: new suites `test/notes.mjs` (28) and `test/engine.mjs` (10);
+  `test/history.mjs` gains the scanned-count assertions (173 total across
+  6 suites).
+
 ## 1.3.0
 
 - `history_search` rewritten as hybrid matching after trace analysis of the

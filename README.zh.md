@@ -16,8 +16,9 @@ DeepSeek Harness 的显式上下文内存子系统。一个插件,四层内存,�
             /reset,t* 任务级 pin 则会被 /reset 清除。
 ② 日记     notes: 模型自己提炼的笔记,存在会话文件里。
             /reset 时注入 checkpoint。
-③ 草稿     /reset 的 checkpoint: LLM 摘要(标注"未验证")
-            + 笔记 + 检索说明。
+③ 草稿     /reset 的 checkpoint: 确定性的机械栏目(本次清除/存活的
+            pin、最后一条用户消息、高频 id/路径/URL)
+            + LLM 摘要(标注"未验证") + 笔记 + 检索说明。
 ④ 交换区   完整会话日志。什么都不删;
             history_search / history_read 按需取回任何原文。
 ```
@@ -28,17 +29,19 @@ DeepSeek Harness 的显式上下文内存子系统。一个插件,四层内存,�
 
 | 工具 | 语义 |
 |------|------|
-| `context_alloc(text, label, scope)` | 逐字钉入一条事实,返回句柄(`t*`/`w*`)。`scope: "task"`(默认)随 `/reset` 清除;`"permanent"` 跨本工作区的会话永存。 |
+| `context_alloc(text, label, scope[, sourceSeq])` | 逐字钉入一条事实,返回句柄(`t*`/`w*`)。`scope: "task"`(默认)随 `/reset` 清除;`"permanent"` 跨本工作区的会话永存。`sourceSeq` 记录事实出自哪条日志事件(`context_list` 可见,不进 vault 正文)。 |
 | `context_free(handle)` | 释放一个 pin。句柄单调递增——被释放的句柄是悬空的;只有损坏(已隔离并告警)的存储才会重置计数器。 |
 | `context_list()` | 分配表:每个 pin 的句柄/标签/计费大小/年龄 + 配额占用。 |
-| `notes_append(text)` / `notes_read()` | 持久日记(只追加)。 |
-| `history_search(query)` / `history_read(fromSeq, toSeq[, offset])` | 全日志检索,含被压缩/切掉的段落;单条超长事件的读取被截断时,用截断标记给出的 `offset` 续读。 |
+| `notes_append(text[, supersedes, tags, sourceSeq])` | 持久日记,JSONL 只追加,每条有稳定 id(`n7`)。三个可选的"边"是模型自己造结构的原语:`supersedes` 让被取代的旧笔记折叠成一行审计条目(版本链),`tags` 把笔记装进自建的桶,`sourceSeq` 指向来源日志事件。 |
+| `notes_read([tag, includeSuperseded])` | 读日记:默认显示活跃笔记 + 折叠的已取代条目;`tag` 只读一个桶,`includeSuperseded` 展开折叠条目全文。 |
+| `history_search(query[, limit, beforeSeq])` | 混合匹配的全日志搜索,含被压缩/切掉的段落:整串短语 → 全词命中 → 部分词三档,按密度排序,默认排除自己的记忆工具流量(`includeSelf` 可加回)。命中带字符 `offset` 可续读。 |
+| `history_read(fromSeq, toSeq[, offset])` | 精确区间读;单条超长事件的读取被截断时,用截断标记给出的 `offset` 续读。 |
 
 节拍提醒(每 20 次非内存类工具调用一次,搭在工具结果里、使 prompt 前缀保持可缓存)提醒模型钉逐字关键事实、记提炼过的进展——和 dsh-subagent-progress 里让 notify_user 汇报可靠的是同一个模式。
 
 ## `/reset`
 
-和输入框里的 `/compact` 并排。把可切的历史替换成混合 checkpoint(标注"未验证"的草稿 + 笔记 + 检索说明),释放本会话的任务级 pin,并如实报告清理结果——写盘失败会明说并记 warn,绝不谎报已释放。官方自动压缩**不动**,仍是默认。
+和输入框里的 `/compact` 并排。把可切的历史替换成混合 checkpoint(机械栏目 + 标注"未验证"的草稿 + 笔记 + 检索说明),释放本会话的任务级 pin,并如实报告清理结果——写盘失败会明说并记 warn,绝不谎报已释放。官方自动压缩**不动**,仍是默认。
 
 ### 可查看的 checkpoint(Web UI)
 
@@ -75,7 +78,7 @@ pin 住在 system prompt,每次请求都交租,所以保险柜的上限来自**�
 
 - 任务级 pin:`~/.dsh/context-manager/pins/<sessionId>.json`
 - 工作区 pin:`~/.dsh/context-manager/pins/ws/<workspace-hash>.json`——规范化 cwd 的 sha256(取前 16 个 hex 字符),同工作区所有会话和子 agent 共享;v1.1.0 的 slug 文件名会在首次触碰时迁移
-- 笔记:`~/.dsh/context-manager/notes/<sessionId>.md`——旧的 `~/.dsh/context-reset/notes/` 会在首次读取或追加前迁移;新文件已存在时读旧拼新,绝不覆盖
+- 笔记:`~/.dsh/context-manager/notes/<sessionId>.jsonl`(v1.4.0 起)——一行一条结构化笔记。v1 的 markdown 日记和旧的 `~/.dsh/context-reset/notes/` 会在首次触碰时惰性迁移成编号条目(合并,绝不覆盖),原文件保留不动
 - 所有 pin/notes 写入都走只用 `node:fs` 实现的 O_EXCL lockfile(过期锁回收 + 有限重试),两个 Harness 进程无法交错读-改-写;不新增任何 npm 运行时依赖
 - pin 存储损坏时改名为 `<file>.corrupt-<timestamp>` 并告警、按空库启动;能解析出 nextHandle 就抢救,保不住会在告警里说明
 
