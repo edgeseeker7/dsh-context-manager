@@ -57,14 +57,18 @@ ok(b3.reason.includes('[t1] API 端点'), 'quota rejection names oldest task pin
 ok(!b3.reason.includes('w1'), 'suggestions stay within task scope');
 ok(store.list({ sessionId: SESSION, cwd: CWD }, undefined).quota === 300, 'unresolved window falls back to pinsMaxChars');
 
-// ── Quota 2: window-derived, label capped and billed ──────────────────────
-// 5% of a 4096-token window = 614 chars: the old Math.max(1000, …) floor is gone.
+// ── Quota 2: window-derived, TOKEN-billed (CJK≈1/char, ASCII≈4 chars/token) ──
+// 5% of a 4096-token window = 204 tokens, billed by estimateTokens.
 const small = new PinStore({ pinMaxChars: 4000, pinsMaxChars: 100000, windowRatio: 0.05, suggestCount: 1 });
-ok(small.list({ sessionId: 'sess-small', cwd: CWD }, 4096).quota === 614, 'quota is derived from the window with no absolute floor (4096 → 614)');
+ok(small.list({ sessionId: 'sess-small', cwd: CWD }, 4096).quota === 204, 'quota is derived from the window in tokens (4096 → 204)');
+ok(small.list({ sessionId: 'sess-small', cwd: CWD }, 4096).unit === 'tokens', 'a known window bills in tokens');
 const s1 = await small.alloc({ sessionId: 'sess-small', cwd: CWD, text: 'q'.repeat(500), label: 'small', scope: 'task' }, 4096);
-ok(s1.accepted === true && s1.quota === 614, 'a 511-char-billed pin fits the 614-char window quota');
-const s2 = await small.alloc({ sessionId: 'sess-small', cwd: CWD, text: 'q'.repeat(620), label: 'small', scope: 'task' }, 4096);
-ok(s2.accepted === false && s2.reason.includes('per-pin cap'), 'window-derived per-pin cap rejects it (no 1000-char floor)');
+ok(s1.accepted === true && s1.quota === 204 && s1.tokens === 131, 'a 500-char ASCII pin bills ≈131 tokens (125 text + 2 label + 4 overhead)');
+const s2 = await small.alloc({ sessionId: 'sess-small', cwd: CWD, text: 'q'.repeat(900), label: 'small', scope: 'task' }, 4096);
+ok(s2.accepted === false && s2.reason.includes('per-pin cap') && s2.reason.includes('tokens'), 'window-derived per-pin cap rejects in tokens (231 > 204)');
+// Same char count, ~4× the cost in CJK:
+const cjk = await small.alloc({ sessionId: 'sess-small', cwd: CWD, text: '中'.repeat(900), label: 'cjk', scope: 'task' }, 32000);
+ok(cjk.tokens === 905, 'a 900-char CJK pin bills ≈905 tokens — CJK is not under-billed anymore');
 
 // A label is capped at 200 chars and billed together with the handle overhead.
 const labelStore = new PinStore({ pinMaxChars: 4000, pinsMaxChars: 1000, windowRatio: 0.05, suggestCount: 1 });
@@ -75,17 +79,17 @@ const t1 = await tight.alloc({ sessionId: 'sess-tight', cwd: CWD, text: 'k', lab
 ok(t1.accepted === false && t1.reason.includes('quota exceeded'), 'label and handle-row overhead count toward used (207 > 206)');
 
 // window-ratio gate on a big-cap store with its own session file:
-// 5% of 32000 tokens × 3 = 4800 chars — five 946-char-billed pins fit, the sixth doesn't
+// 5% of 32000 tokens = 1600 tokens — six ≈239-token pins fit, the seventh doesn't
 const store2 = new PinStore({ pinMaxChars: 1000, pinsMaxChars: 100000, windowRatio: 0.05, suggestCount: 2 });
 let ratioOk = true;
-for (let i = 0; i < 5; i += 1) {
+for (let i = 0; i < 6; i += 1) {
   ratioOk =
     (await store2.alloc({ sessionId: 'sess-ratio', cwd: CWD, text: 'z'.repeat(900), scope: 'task' }, 32000)).accepted &&
     ratioOk;
 }
-ok(ratioOk, 'ratio store: 5 × 900 chars fit under the 4800 ratio cap');
+ok(ratioOk, 'ratio store: 6 × ≈239 tokens fit under the 1600-token cap');
 const c6 = await store2.alloc({ sessionId: 'sess-ratio', cwd: CWD, text: 'z'.repeat(900), scope: 'task' }, 32000);
-ok(c6.accepted === false && c6.reason.includes('quota exceeded'), 'window-ratio gate rejects the 6th (5676 > 4800)');
+ok(c6.accepted === false && c6.reason.includes('quota exceeded'), 'window-ratio gate rejects the 7th (1673 > 1600)');
 const c7 = await store2.alloc({ sessionId: 'sess-ratio', cwd: CWD, text: 'z'.repeat(900), scope: 'task' }, 200000);
 ok(c7.accepted === true, 'same pin accepted under a big window (ratio gate relaxed)');
 
@@ -249,7 +253,7 @@ const capStore = new PinStore({ pinMaxChars: 4000, pinsMaxChars: 100000, windowR
 await capStore.alloc({ sessionId: 'cap-session', cwd: '/cap', text: 'small fact one', label: 'one', scope: 'permanent' });
 await capStore.alloc({ sessionId: 'cap-session', cwd: '/cap', text: 'y'.repeat(300), label: 'big', scope: 'task' });
 await capStore.alloc({ sessionId: 'cap-session', cwd: '/cap', text: 'small fact two', label: 'two', scope: 'task' });
-const capped = capStore.render('cap-session', '/cap', 120);
+const capped = capStore.render('cap-session', '/cap', 60);
 ok(capped.includes('[w1]'), 'the first pin always renders');
 ok(capped.includes('vault overflow'), 'overflowing pins produce a loud overflow line');
 ok(!capped.includes('y'.repeat(300)), 'the oversized pin body is omitted');

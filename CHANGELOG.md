@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.8.0
+
+Measured, not guessed — the two "decided on a whim" numbers that actually
+mattered, replaced by mechanisms:
+
+- **Token-billed quota (the flat 3-chars/token guess is gone)**: when the
+  routed model's window is known, pins are billed by `estimateTokens`
+  (CJK/full-width ≈ 1 token/char, everything else ≈ 4 chars/token) against
+  a quota of pinsWindowRatio × window TOKENS. The old flat conversion
+  under-billed CJK content ~2×, so Chinese-heavy vaults were twice their
+  intended size. When the window cannot be resolved, the char-denominated
+  config caps still apply (billed in chars, unchanged). Alloc reasons,
+  context_list, the vault render gate, and the overflow line all report in
+  the billed unit, marked as estimates.
+- **Smart nudge (fixed cadence → three mechanisms)**:
+  - Trigger: fires on INFORMATION PRODUCED (~5% of the context window of
+    new tokens since the last memory operation, floor 2000, fallback 12000
+    when the meter is unavailable → old tool-call cadence), not on activity
+    counts. Memory work is now proportional to new information.
+  - Backoff: a nudge that produces no memory operation before the next
+    trigger doubles its threshold (capped at 8×); a productive one resets
+    it. Ignored reminders get rarer instead of becoming wallpaper.
+  - Content: the nudge names concrete pin candidates (top ids/paths from
+    the last 30 events, filtered against the current vault) instead of only
+    lecturing — and keeps the honest out: "skipping is the norm".
+- Tests: token billing (ASCII vs CJK) / ratio gate in tokens / render gate
+  in tokens / nudge trigger, content, backoff, reset, block-path, cadence
+  fallback (275 total across 8 suites).
+
 ## 1.7.0
 
 Self-review fixes — plus a CRITICAL latent bug the new boot smoke caught:

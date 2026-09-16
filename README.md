@@ -37,7 +37,7 @@ Reclamation policies: **pin = mlock, official compact = summarizing GC, /reset =
 | `history_search(query[, limit, beforeSeq, includeCurrentTurn])` | Hybrid full-log search, shadowed events included: exact phrase → all-terms → some-terms tiers, density-ranked. Own memory-tool traffic AND the in-flight turn are excluded by default (`includeSelf`/`includeCurrentTurn` opt back in). Checkpoint/summary matches are marked as compressed content. Matches carry a char `offset`; the render line shows tier + pool depth. |
 | `history_read(fromSeq, toSeq[, offset])` | Exact range read; a read cut inside an oversized event continues with the `offset` its truncation marker reports. |
 
-A cadence nudge (every 20 non-memory tool calls, riding tool results so the prompt prefix stays cacheable) reminds the model to pin verbatim-critical facts and note distilled progress — the same pattern that made `notify_user` reporting reliable in dsh-subagent-progress.
+A smart nudge (riding tool results so the prompt prefix stays cacheable) reminds the model to secure memory: it triggers on **information produced** (~5% of the window of new tokens since the last memory op; falls back to a `nudgeEvery` call cadence when the token meter is unavailable), **backs off exponentially** when ignored (up to 8×) and resets when the model acts, and names **concrete pin candidates** from recent events instead of only lecturing — while keeping the honest out that skipping is the norm.
 
 ## `/reset`
 
@@ -51,11 +51,11 @@ The stock chat UI only makes `/compact` expandable (its renderer gates on the co
 
 Pins pay rent on every request (they live in the system prompt), so the vault is bounded from the model the calling agent is actually routed to — each agent (subagents included) resolves its own model:
 
-- total: `pinsWindowRatio` (default 5%) × that model's declared `contextWindow` × 3 chars/token
+- total: `pinsWindowRatio` (default 5%) × that model's declared `contextWindow`, in **tokens**
 - per pin: the same total (one pin cannot exceed the vault budget), and the label is capped at 200 chars
-- billed usage is the rendered pin: verbatim text + label + handle row
+- billing is content-aware (`estimateTokens`: CJK/full-width ≈ 1 token/char, everything else ≈ 4 chars/token) — a flat chars-per-token guess would under-bill CJK ~2×; surfaced numbers are marked as estimates
 
-`pinsMaxChars` (default 12000) and `pinMaxChars` (default 4000) are **fallback** caps used only when the context window cannot be resolved. There is no absolute floor, so switching to a small-window model really does shrink the vault.
+`pinsMaxChars` (default 12000) and `pinMaxChars` (default 4000) are **fallback** caps used only when the context window cannot be resolved (billed in chars). There is no absolute floor, so switching to a small-window model really does shrink the vault.
 
 Quota exhaustion rejects the alloc and names the oldest task pins as free candidates — honest failure with a handrail, never silent eviction.
 
