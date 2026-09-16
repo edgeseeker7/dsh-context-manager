@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.2
+
+- **Whole-chain tree view**: `notes_read({ chain: "n7" })` renders the
+  entire version chain around a note as an indented tree — roots down to
+  every active successor branch, each node with date, preview, and status
+  (ultimate successors named), the queried note marked with ←. Capped at
+  30 nodes with an explicit remainder count; cycles break visibly. The
+  chain stops being a by-id fragment and becomes an object the model can
+  see whole — branches (multi-successor corrections) become manageable
+  instead of surprising.
+- Tests: tree shape / branch indentation / status / unknown id (242 total
+  across 6 suites).
+
 ## 1.6.1
 
 Cross-session discoverability (observed failure: a brand-new conversation

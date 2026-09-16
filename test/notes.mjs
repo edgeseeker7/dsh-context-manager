@@ -218,5 +218,20 @@ ok(crossRead.includes('#cross'), 'cross-session read renders tags');
 const crossChain = await store.append('brand-new-session', 'my own first note');
 ok(crossChain.id === 'n1', 'cross-session reads never touch the target store (ids independent)');
 
+// ── v1.6.2: the whole version chain as a tree ─────────────────────────────
+const treeSession = 'tree-session';
+await store.append(treeSession, 'root claim about the world');
+await store.append(treeSession, 'first correction', { supersedes: ['n1'] });
+await store.append(treeSession, 'branch A correction', { supersedes: ['n2'] });
+await store.append(treeSession, 'branch B correction', { supersedes: ['n2'] });
+const tree = store.read(treeSession, { chain: 'n2' });
+ok(tree.includes('version chain around n2 (4 notes)'), 'chain tree header counts the component');
+ok(tree.includes('[n1') && tree.includes('superseded by n3, n4'), 'the root renders with its ultimate successors');
+ok(tree.includes('[n2') && tree.includes('←'), 'the queried note is marked');
+ok(tree.includes('  [n3') && tree.includes('  [n4'), 'both branches render indented');
+ok(tree.includes('branch A correction') && tree.includes('branch B correction'), 'both branch texts visible');
+ok(tree.includes('active'), 'active endpoints are marked active');
+ok(store.read(treeSession, { chain: 'n99' }).includes('no note n99'), 'an unknown chain id says so');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
