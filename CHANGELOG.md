@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.6.0
+
+Trace-driven capabilities — every item here is grounded in the three-agent
+analysis of the Probing-Bench (100-question, 5-arm) and gate (108-question)
+eval traces:
+
+- **Current-turn self-shadowing fixed (the eval's hardest plugin-level
+  evidence)**: `history_search` now excludes the in-flight turn's events by
+  default — they are already in the caller's context, and their
+  query-echoing text was flooding the best-tier pool, pushing deep-history
+  hits out (the `beforeSeq` escape hatch existed but went used 0/310 times).
+  `includeCurrentTurn: true` opts back in; an explicit `beforeSeq` disables
+  the filter (the caller bounded the scan on their own terms). The
+  exclusion count is reported, and the render line now shows tier + pool
+  depth (`tier 1: showing 10 of 23 best-tier matches`).
+- **Checkpoint/summary events are marked everywhere**: search matches carry
+  `checkpoint: true` with a render flag, and history_read's event headers
+  show `[checkpoint/summary — compressed, verify against raw events]` — a
+  log-embedded summary can no longer pass as primary evidence (one eval
+  failure was exactly this).
+- **Retrieval protocol in the reset checkpoint (both trace agents
+  converged)**: never answer about prior work without searching (the sketch
+  is a map, never an answer source); take query entities verbatim from the
+  question, not the sketch; split multi-part questions and evidence each
+  part (never refuse/bluff the whole); constraints — search negations and
+  amendments, the LATEST user instruction wins, quote the sentence
+  verbatim; compressed content is a pointer, not evidence.
+- **User constraints + recent instructions VERBATIM in the mechanical
+  checkpoint section**: `extractConstraints` pulls constraint-shaped
+  sentences (negations, mandates, scope limits, zh+en) out of the shadowed
+  span's user messages with their seqs, and the last 5 user instructions
+  are kept verbatim — paraphrased constraints were getting inverted ("不要
+  X" → answered as X) or scope-expanded ("only X" → X+Y) by the answer
+  layer after a reset.
+- **Symmetric memory semantics (gate-eval finding)**: RULES_TEXT and
+  context_alloc now state that pinning is NOT the default and most content
+  is ephemeral, plus a task-neutral clause — the memory protocol does not
+  change task-specific judgment criteria (the static keep-leaning injection
+  was the only real difference behind the plugin arm's neg-recall dip;
+  nudge and tool-call paths were falsified).
+- Tests: turn-exclusion / poolSize / checkpoint marks / constraint
+  extraction (229 total across 6 suites).
+
 ## 1.5.0
 
 Performance + discoverability, from the three-agent audit's high findings:

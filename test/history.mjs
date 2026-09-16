@@ -28,7 +28,10 @@ function fakeSession(events) {
     },
   };
 }
-const userMessage = (text) => ({ type: 'user/message', data: { role: 'user', content: [{ type: 'text', text }] } });
+const userMessage = (text) => ({
+  type: 'user/message',
+  data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text }] },
+});
 const assistantMessage = (text) => ({
   type: 'assistant/message',
   data: { message: { role: 'assistant', content: [{ type: 'text', text }] } },
@@ -159,9 +162,9 @@ ok(single.matches.every((m) => m.seq !== 4 && m.seq !== 5), 'single-term also ex
 const bounded = historySearch(hybridSession, { query: 'photoCoordinator', beforeSeq: 3 });
 ok(bounded.matches.length > 0 && bounded.matches.every((m) => m.seq < 3), 'beforeSeq excludes the current turn from results');
 
-// 6) includeSelf opts back into self-matching
-const withSelf = historySearch(hybridSession, { query: 'photoCoordinator', includeSelf: true });
-ok(withSelf.matches.some((m) => m.seq === 4 || m.seq === 5), 'includeSelf: true re-admits own tool traffic');
+// 6) includeSelf opts back into self-matching (current-turn events still need includeCurrentTurn)
+const withSelf = historySearch(hybridSession, { query: 'photoCoordinator', includeSelf: true, includeCurrentTurn: true });
+ok(withSelf.matches.some((m) => m.seq === 4 || m.seq === 5), 'includeSelf + includeCurrentTurn re-admits own tool traffic');
 
 // 7) matches carry a char offset pointing at the hit
 ok(typeof andHit.matches[0].offset === 'number' && histText.indexOf('照片管理目标') >= 0, 'match offset is a char index');
@@ -191,6 +194,38 @@ const syncResult = historySearch(bigSession, { query: 'needle' });
 const asyncResult = await historySearchAsync(bigSession, { query: 'needle' });
 ok(JSON.stringify(asyncResult) === JSON.stringify(syncResult), 'async search returns the identical result');
 ok(asyncResult.scanned === bigEvents.length && asyncResult.scanned > 4000, 'the scan crossed several yield chunks');
+
+// ── v1.6.0: the current turn is excluded by default ──────────────────────
+const turnSession = fakeSession([
+  userMessage('needle fact from deep history'), // seq 0
+  assistantMessage('earlier answer'), // seq 1
+  userMessage('probe: what about needle?'), // seq 2 — the current turn's trigger (stays searchable)
+  assistantMessage('needle needle needle — my own echo'), // seq 3 — in-flight turn noise
+]);
+const turnDefault = historySearch(turnSession, { query: 'needle' });
+ok(turnDefault.matches.every((m) => m.seq !== 3), 'the in-flight turn is excluded by default');
+ok(turnDefault.currentTurnExcluded === 1, 'the exclusion count is reported');
+ok(turnDefault.matches.some((m) => m.seq === 2), 'the triggering user message stays searchable');
+const turnIncluded = historySearch(turnSession, { query: 'needle', includeCurrentTurn: true });
+ok(turnIncluded.matches[0].seq === 3, 'includeCurrentTurn re-admits the in-flight turn');
+
+// ── v1.6.0: poolSize reports the best-tier pool beyond the shown cap ─────
+ok(dense.poolSize === 2, 'poolSize counts the whole best-tier pool');
+
+// ── v1.6.0: checkpoint/summary events are visibly marked ─────────────────
+const checkpointEvent = {
+  type: 'user/message',
+  data: {
+    role: 'user',
+    source: { kind: 'plugin', plugin: 'compact', compactionId: 'c1' },
+    content: [{ type: 'text', text: 'CHECKPOINT summary mentioning needle' }],
+  },
+};
+const cpSession = fakeSession([checkpointEvent, userMessage('needle raw fact'), userMessage('probe needle')]);
+const cpSearch = historySearch(cpSession, { query: 'needle' });
+ok(cpSearch.matches.find((m) => m.seq === 0)?.checkpoint === true, 'search marks checkpoint events');
+const cpRead = historyRead(cpSession, { fromSeq: 0, toSeq: 0 }, 500);
+ok(cpRead.text.includes('checkpoint/summary'), 'history_read flags compressed content in the event header');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
