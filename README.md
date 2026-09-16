@@ -33,7 +33,7 @@ Reclamation policies: **pin = mlock, official compact = summarizing GC, /reset =
 | `context_free(handle)` | Release a pin. Handles are monotonic — a freed handle dangles; only a corrupt, quarantined store can restart the counter (and it says so). |
 | `context_list()` | Allocation table: every pin with handle/label/billed size/age, plus quota usage. |
 | `notes_append(text[, supersedes, tags, sourceSeq])` | Durable diary, append-only JSONL with stable note ids (`n7`). The three optional edges are the model's structure-building primitives: `supersedes` folds replaced notes into one-line audit entries (version chains), `tags` files notes into self-invented buckets, `sourceSeq` points at the source log event. |
-| `notes_read([tag, includeSuperseded])` | Read the diary: active notes plus folded superseded one-liners by default; filter to one bucket with `tag`, expand folded notes with `includeSuperseded`. |
+| `notes_read([id, tag, includeSuperseded])` | Read the diary: active notes plus folded superseded one-liners by default; fetch one note verbatim with `id`, filter to one bucket with `tag`, expand folded notes with `includeSuperseded`. |
 | `history_search(query[, limit, beforeSeq])` | Hybrid full-log search, shadowed events included: exact phrase → all-terms → some-terms tiers, density-ranked, own memory-tool traffic excluded (`includeSelf` opts back in). Matches carry a char `offset` into the hit. |
 | `history_read(fromSeq, toSeq[, offset])` | Exact range read; a read cut inside an oversized event continues with the `offset` its truncation marker reports. |
 

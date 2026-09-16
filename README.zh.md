@@ -33,7 +33,7 @@ DeepSeek Harness 的显式上下文内存子系统。一个插件,四层内存,�
 | `context_free(handle)` | 释放一个 pin。句柄单调递增——被释放的句柄是悬空的;只有损坏(已隔离并告警)的存储才会重置计数器。 |
 | `context_list()` | 分配表:每个 pin 的句柄/标签/计费大小/年龄 + 配额占用。 |
 | `notes_append(text[, supersedes, tags, sourceSeq])` | 持久日记,JSONL 只追加,每条有稳定 id(`n7`)。三个可选的"边"是模型自己造结构的原语:`supersedes` 让被取代的旧笔记折叠成一行审计条目(版本链),`tags` 把笔记装进自建的桶,`sourceSeq` 指向来源日志事件。 |
-| `notes_read([tag, includeSuperseded])` | 读日记:默认显示活跃笔记 + 折叠的已取代条目;`tag` 只读一个桶,`includeSuperseded` 展开折叠条目全文。 |
+| `notes_read([id, tag, includeSuperseded])` | 读日记:默认显示活跃笔记 + 折叠的已取代条目;`id` 逐字取单条(含链状态),`tag` 只读一个桶,`includeSuperseded` 展开折叠条目全文。 |
 | `history_search(query[, limit, beforeSeq])` | 混合匹配的全日志搜索,含被压缩/切掉的段落:整串短语 → 全词命中 → 部分词三档,按密度排序,默认排除自己的记忆工具流量(`includeSelf` 可加回)。命中带字符 `offset` 可续读。 |
 | `history_read(fromSeq, toSeq[, offset])` | 精确区间读;单条超长事件的读取被截断时,用截断标记给出的 `offset` 续读。 |
 
