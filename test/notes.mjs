@@ -1,7 +1,7 @@
 /* dsh-context-manager structured notes (v1.4.0): supersedes chains, tag
  * buckets, sourceSeq provenance, JSONL migration. DSH_HOME redirected to a
  * temp dir so nothing touches real user data. */
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -103,6 +103,52 @@ ok(afterCorrupt.id === 'n4', 'id counter survives corrupt lines (max id wins)');
 const tiny = new NotesStore(60);
 await tiny.append('tiny-session', 'x'.repeat(200));
 ok(tiny.read('tiny-session').includes('earlier chars not shown'), 'over-budget views truncate with an explicit marker');
+
+// ── v1.4.1: truncation drops whole oldest entries, never mid-entry ────────
+const bounded = new NotesStore(75);
+await bounded.append('bounded-session', 'oldest note body aaa');
+await bounded.append('bounded-session', 'middle note body bbb');
+await bounded.append('bounded-session', 'newest note body ccc');
+const boundedView = bounded.read('bounded-session');
+ok(boundedView.includes('newest note body ccc'), 'the newest note survives truncation');
+ok(!boundedView.includes('oldest note body aaa'), 'the oldest note drops whole');
+ok(/older notes? (dropped|truncated)/.test(boundedView), 'the drop marker states what happened');
+ok(/\[n\d/.test(boundedView.split('\n')[1] ?? ''), 'the view resumes at an entry boundary, not mid-text');
+
+// ── v1.4.1: wholly corrupt jsonl → quarantined, reseeded from markdown ────
+const rescueWarnings = [];
+const rescue = new NotesStore(8000, { logger: { warn: (m) => rescueWarnings.push(String(m)) } });
+const rescueDir = join(home, 'context-manager', 'notes');
+writeFileSync(join(rescueDir, 'rescue-session.md'), '<!-- 2026-09-10T00:00:00.000Z -->\nmarkdown original survives\n');
+writeFileSync(join(rescueDir, 'rescue-session.jsonl'), 'GARBAGE\n{BROKEN\n');
+const rescuedView = rescue.read('rescue-session');
+ok(rescuedView.includes('markdown original survives'), 'wholly corrupt jsonl reseeds from the markdown');
+ok(rescueWarnings.some((w) => w.includes('quarantined')), 'the corrupt store is quarantined with a warning');
+const quarantineFiles = readdirSync(rescueDir).filter((name) => name.startsWith('rescue-session.jsonl.corrupt-'));
+ok(quarantineFiles.length === 1, 'the corrupt store bytes are kept in quarantine');
+
+// ── v1.4.1: newer markdown merges into an existing store (cross-version) ──
+const mergeMd = join(rescueDir, 'merge-session.md');
+writeFileSync(mergeMd, '<!-- 2026-09-15T00:00:00.000Z -->\nbase note from the v1 era\n');
+store.read('merge-session'); // migrates the base note into the store
+// …then an old (pre-v1.4.0) process appends another note to the markdown:
+writeFileSync(
+  mergeMd,
+  '<!-- 2026-09-15T00:00:00.000Z -->\nbase note from the v1 era\n\n<!-- 2026-09-17T00:00:00.000Z -->\nlate note appended by an old process\n',
+);
+const future = new Date(Date.now() + 60000);
+utimesSync(mergeMd, future, future);
+const mergedView = store.read('merge-session');
+ok(mergedView.includes('late note appended by an old process'), 'newer markdown entries merge into the store');
+ok(mergedView.split('base note from the v1 era').length === 2, 'already-migrated entries are not duplicated');
+const remerge = store.read('merge-session');
+ok(remerge.split('late note appended by an old process').length === 2, 'a second read does not re-merge (idempotent)');
+
+// ── v1.4.1: fetch one note by id, including its chain status ─────────────
+const byId = store.read(SESSION, { id: 'n2' });
+ok(byId.includes('second decision') && byId.includes('superseded by n4'), 'notes_read by id returns the verbatim note plus chain status');
+ok(store.read(SESSION, { id: 'n4' }).includes('final wording') && !store.read(SESSION, { id: 'n4' }).includes('superseded by'), 'an active note fetched by id carries no chain caveat');
+ok(store.read(SESSION, { id: 'n999' }) === '', 'an unknown id reads empty');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

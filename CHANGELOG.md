@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.4.1
+
+- **Markdown degradation paths completed**: a store whose EVERY line is
+  corrupt is quarantined (bytes kept, warning names the quarantine file)
+  and reseeded from the markdown original — a damaged jsonl can no longer
+  make the diary look empty while the markdown sits next to it. And a
+  markdown NEWER than the store (a pre-v1.4.0 process still appending
+  during the transition window) merges its new entries into the store,
+  deduped by timestamp+text fingerprint so repeated merges are idempotent;
+  the atomic rewrite then passes the markdown's mtime, stopping further
+  merges until the markdown grows again.
+- **Truncation respects entry boundaries**: an over-budget notes view drops
+  whole oldest entries (`[2 older notes dropped — N earlier chars not
+  shown]`) before ever cutting mid-entry; only a single oversized entry
+  still hard-truncates.
+- `notes_read({ id })` fetches one note verbatim, including its chain
+  status (`superseded by n4`) when folded.
+- Tests: `test/notes.mjs` gains the degradation/merge/boundary/by-id suite
+  (186 total across 6 suites).
+
 ## 1.4.0
 
 Design review verdict: the four-layer model had storage but no structure —
