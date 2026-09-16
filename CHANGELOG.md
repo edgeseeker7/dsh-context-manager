@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.4.2
+
+Correctness hotfixes from the three-agent audit (memory/GC, free mechanism,
+structure usability):
+
+- **Markdown merge no longer races appends**: read paths now only VIEW
+  newer-markdown entries in memory; the merge is persisted exclusively by
+  `append`, inside the file lock, before id assignment — the unlocked
+  read-modify-write that could lose a concurrent append is gone. Store
+  seeding also writes atomically (tmp + rename).
+- **Multiple successors are all reported**: a note corrected twice renders
+  `[n1 → n2, n3]` in the folded audit line and `superseded by n2, n3` in
+  the by-id read — first-edge-wins no longer hides one correction from the
+  audit trail. Cycle fallbacks keep the edge visible.
+- **Folded and by-id rows keep their metadata**: tags and sourceSeq render
+  on folded one-liners and by-id fetches, so rewriting a note (the retag
+  path) no longer loses its buckets and provenance.
+- **Tags fail honestly**: tags containing spaces or over 40 chars, and more
+  than 8 distinct tags, now REJECT the append with the offenders named —
+  no more silent drops.
+- `clearTask` on a corrupt store reports the quarantine instead of "No task
+  pins were pinned"; the /reset outcome names the quarantine file.
+- Corrupt-store counter salvage now raises over the highest handle still
+  visible in the raw bytes, so a counter clipped mid-digits can never
+  re-issue a live handle; a failed quarantine rename warns once per file
+  per process instead of on every request.
+- `context_alloc` / `context_free` wrap lock-contention and IO failures
+  into `{accepted: false, reason}` instead of throwing raw tool errors.
+- The checkpoint's pin line is tense-honest: "about to clear … the /reset
+  outcome line reports the actual cleanup" (the section is composed before
+  the cleanup runs).
+- Tests: multi-successor / metadata / tag-validation / merge-persistence /
+  quarantine-reporting / clipped-counter / warn-once coverage (203 total
+  across 6 suites).
+
 ## 1.4.1
 
 - **Markdown degradation paths completed**: a store whose EVERY line is

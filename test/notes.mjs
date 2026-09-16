@@ -150,5 +150,43 @@ ok(byId.includes('second decision') && byId.includes('superseded by n4'), 'notes
 ok(store.read(SESSION, { id: 'n4' }).includes('final wording') && !store.read(SESSION, { id: 'n4' }).includes('superseded by'), 'an active note fetched by id carries no chain caveat');
 ok(store.read(SESSION, { id: 'n999' }) === '', 'an unknown id reads empty');
 
+// ── v1.4.2: multiple successors all surface in the audit trail ────────────
+const multi = new NotesStore(8000);
+await multi.append('fork-session', 'original claim');
+await multi.append('fork-session', 'correction A', { supersedes: ['n1'] });
+await multi.append('fork-session', 'correction B', { supersedes: ['n1'] });
+const forkView = multi.read('fork-session');
+ok(forkView.includes('[n1 → n2, n3]'), 'both successors render in the folded audit line');
+ok(multi.read('fork-session', { id: 'n1' }).includes('superseded by n2, n3'), 'by-id read reports every successor');
+
+// ── v1.4.2: folded and by-id rows carry tags/seq metadata ────────────────
+const meta = new NotesStore(8000);
+await meta.append('meta-session', 'tagged claim', { tags: ['eval'], sourceSeq: 42 });
+await meta.append('meta-session', 'updated claim', { supersedes: ['n1'] });
+const metaFolded = meta.read('meta-session');
+ok(metaFolded.includes('[n1 → n2 #eval seq:42]'), 'the folded line keeps tags and sourceSeq');
+ok(meta.read('meta-session', { id: 'n1' }).includes('#eval seq:42'), 'the by-id read keeps tags and sourceSeq');
+
+// ── v1.4.2: invalid tags reject honestly instead of dropping silently ─────
+const spacey = await meta.append('meta-session', 'note', { tags: ['my bucket'] });
+ok(spacey.accepted === false && spacey.reason.includes('my bucket'), 'a tag with spaces rejects with the tag named');
+const tooMany = await meta.append('meta-session', 'note', { tags: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'] });
+ok(tooMany.accepted === false && tooMany.reason.includes('at most 8'), 'more than 8 tags rejects');
+
+// ── v1.4.2: append persists the newer-markdown merge under the lock ───────
+const persistMd = join(rescueDir, 'persist-session.md');
+writeFileSync(persistMd, '<!-- 2026-09-15T00:00:00.000Z -->\nbase note\n');
+store.read('persist-session');
+writeFileSync(
+  persistMd,
+  '<!-- 2026-09-15T00:00:00.000Z -->\nbase note\n\n<!-- 2026-09-17T01:00:00.000Z -->\nlate md note\n',
+);
+utimesSync(persistMd, future, future);
+ok(store.read('persist-session').includes('late md note'), 'read path views the merge in memory');
+ok(!readFileSync(join(rescueDir, 'persist-session.jsonl'), 'utf8').includes('late md note'), 'read path does not persist the merge');
+await store.append('persist-session', 'fresh note');
+ok(readFileSync(join(rescueDir, 'persist-session.jsonl'), 'utf8').includes('late md note'), 'append persists the merge under the lock');
+ok(store.read('persist-session').split('late md note').length === 2, 'persisted merge does not duplicate on later reads');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

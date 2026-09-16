@@ -63,6 +63,9 @@ ok(broke.result.text.includes('disk full'), 'the failure reason reaches the user
 ok(!/task pins? freed/.test(broke.result.text), 'a failed cleanup never claims a free');
 ok(warnings.some((warning) => warning.includes('left task pins pinned')), 'a failed cleanup is warned about');
 
+const quarantined = await withPinStore({ clearTask: async () => ({ cleared: 0, quarantined: '/tmp/x.corrupt-1' }) });
+ok(quarantined.result.text.includes('quarantined') && !quarantined.result.text.includes('No task pins were pinned'), 'a quarantined store is reported instead of "none pinned"');
+
 const usage = await withPinStore({ clearTask: async () => ({ cleared: 0 }) });
 registered = usage.definition;
 ok((await registered.handler({ ...invocation, rawInput: '--now' })).kind === 'error', 'arguments are rejected');

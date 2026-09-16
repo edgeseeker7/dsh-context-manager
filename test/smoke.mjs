@@ -1,7 +1,7 @@
 /* dsh-context-manager smoke test: pure-store semantics, no harness needed.
  * DSH_HOME is redirected to a temp dir so nothing touches real user data. */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -219,6 +219,30 @@ ok(
   truncatedNotes.read('trunc-session').includes('earlier chars not shown'),
   'notes truncation states how much was dropped',
 );
+
+// ── v1.4.2: clearTask surfaces a quarantined store instead of "none pinned" ──
+const corruptTaskPath = noisy.taskFile('sess-clearcorrupt');
+writeFileSync(corruptTaskPath, '{"nextHandle": 3, "pins": [BROKEN');
+const clearedCorrupt = await noisy.clearTask('sess-clearcorrupt');
+ok(clearedCorrupt.cleared === 0 && typeof clearedCorrupt.quarantined === 'string', 'clearTask reports the quarantine, not "no pins"');
+
+// ── v1.4.2: a clipped nextHandle is raised over the highest visible handle ──
+const clippedPath = noisy.taskFile('sess-clipped');
+writeFileSync(clippedPath, '{"nextHandle": 1, "pins": [ {"handle": "t9", "text": "x", "label": "", "createdAt": 0}');
+const clippedAlloc = await noisy.alloc({ sessionId: 'sess-clipped', cwd: CWD, text: 'after clip', scope: 'task' });
+ok(clippedAlloc.accepted === true && clippedAlloc.handle === 't10', 'clipped counter raised above the highest visible handle (no re-issue)');
+
+// ── v1.4.2: a failed quarantine rename warns once per file, not per load ──
+const stormDir = dirname(noisy.taskFile('sess-storm'));
+const stormPath = noisy.taskFile('sess-storm');
+writeFileSync(stormPath, 'NOT JSON');
+chmodSync(stormDir, 0o555);
+warnings.length = 0;
+noisy.load(stormPath);
+noisy.load(stormPath);
+noisy.load(stormPath);
+chmodSync(stormDir, 0o755);
+ok(warnings.filter((w) => w.includes('sess-storm')).length === 1, 'failed quarantine rename warns once per file per process');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
