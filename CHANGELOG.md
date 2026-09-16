@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.6.1
+
+Cross-session discoverability (observed failure: a brand-new conversation
+asked "what have you been up to", got `(no notes yet)`, and had no tool
+path to the old session's diary — notes are per-session BY DESIGN, but the
+design had no discovery layer):
+
+- `notes_read({ listSessions: true })` lists every session diary in the
+  workspace (session id, note count, size, last write, newest first).
+- `notes_read({ session: "<id>" })` reads another session's diary with the
+  same rendering/folding/budget logic — cross-session reads NEVER write to
+  the target store (migration seeding still runs; appends stay local).
+- **Encounter-time signpost**: an empty-diary `notes_read` in a workspace
+  that HAS older diaries now answers with a fork in the road instead of a
+  dead end: "no notes yet in THIS session — but N other sessions have
+  diaries; newest: session-…, 48 notes; listSessions to see them".
+- **Structure mirror in the reset checkpoint**: the mechanical section
+  gains a one-line derived report of the agent's own memory shape (N active
+  / M superseded notes, buckets with counts) — self-observation is what
+  turns grown structures into tended structures.
+- RULES_TEXT and the notes_read description document the per-session scope
+  and the cross-session path.
+- Tests: sessionsIndex / listSessions / cross-session reads / store
+  isolation (235 total across 6 suites).
+
 ## 1.6.0
 
 Trace-driven capabilities — every item here is grounded in the three-agent

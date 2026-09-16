@@ -205,5 +205,18 @@ ok(namedView.includes('(n1)'), 'the drop marker lists the dropped note ids');
 ok(namedView.includes('notes_read({ id })'), 'the drop marker teaches the by-id escape hatch');
 ok(named.read('named-session', { id: 'n1' }).includes('first body aaa'), 'a dropped note is still reachable by id');
 
+// ── v1.6.1: cross-session discovery and read ──────────────────────────────
+await store.append('other-session', 'note from another conversation', { tags: ['cross'] });
+const sessionIndex = store.sessionsIndex();
+ok(sessionIndex.length > 0 && sessionIndex.some((entry) => entry.sessionId === 'other-session'), 'sessionsIndex finds other diaries');
+ok(sessionIndex[0].mtime >= sessionIndex[sessionIndex.length - 1].mtime, 'sessionsIndex is newest-first');
+const listed = store.read('brand-new-session', { listSessions: true });
+ok(listed.includes('other-session') && listed.includes('notes_read({ session:'), 'listSessions renders the index with the read hint');
+const crossRead = store.read('brand-new-session', { session: 'other-session' });
+ok(crossRead.includes('note from another conversation'), 'a new session reads another diary');
+ok(crossRead.includes('#cross'), 'cross-session read renders tags');
+const crossChain = await store.append('brand-new-session', 'my own first note');
+ok(crossChain.id === 'n1', 'cross-session reads never touch the target store (ids independent)');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
