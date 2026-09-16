@@ -33,7 +33,7 @@ Reclamation policies: **pin = mlock, official compact = summarizing GC, /reset =
 | `context_free(handle)` | Release a pin. Handles are monotonic — a freed handle dangles; only a corrupt, quarantined store can restart the counter (and it says so). |
 | `context_list()` | Allocation table: every pin with handle/label/billed size/age, plus quota usage. |
 | `notes_append(text[, supersedes, tags, sourceSeq])` | Durable diary, append-only JSONL with stable note ids (`n7`). The three optional edges are the model's structure-building primitives: `supersedes` folds replaced notes into one-line audit entries (version chains), `tags` files notes into self-invented buckets, `sourceSeq` points at the source log event. |
-| `notes_read([id, tag, includeSuperseded])` | Read the diary: active notes plus folded superseded one-liners by default; fetch one note verbatim with `id`, filter to one bucket with `tag`, expand folded notes with `includeSuperseded`. |
+| `notes_read([listTags, id, tag, includeSuperseded])` | Read the diary: active notes plus folded superseded one-liners by default; `listTags` enumerates every bucket with its active count, `id` fetches one note verbatim (the escape hatch for truncated-away notes), `tag` reads one bucket, `includeSuperseded` expands folded notes. |
 | `history_search(query[, limit, beforeSeq])` | Hybrid full-log search, shadowed events included: exact phrase → all-terms → some-terms tiers, density-ranked, own memory-tool traffic excluded (`includeSelf` opts back in). Matches carry a char `offset` into the hit. |
 | `history_read(fromSeq, toSeq[, offset])` | Exact range read; a read cut inside an oversized event continues with the `offset` its truncation marker reports. |
 
@@ -58,6 +58,8 @@ Pins pay rent on every request (they live in the system prompt), so the vault is
 `pinsMaxChars` (default 12000) and `pinMaxChars` (default 4000) are **fallback** caps used only when the context window cannot be resolved. There is no absolute floor, so switching to a small-window model really does shrink the vault.
 
 Quota exhaustion rejects the alloc and names the oldest task pins as free candidates — honest failure with a handrail, never silent eviction.
+
+The vault also has a **render-time gate** (v1.5.0+): alloc is only a write-time admission check, so the section renderer re-evaluates the quota with the READER's window on every request — a workspace vault filled by a big-window session cannot flood a small-window session's prompt. Overflowing pins are omitted with a loud `[vault overflow …]` line naming their handles (they stay allocated and visible in `context_list`).
 
 ## Configuration
 

@@ -33,7 +33,7 @@ DeepSeek Harness 的显式上下文内存子系统。一个插件,四层内存,�
 | `context_free(handle)` | 释放一个 pin。句柄单调递增——被释放的句柄是悬空的;只有损坏(已隔离并告警)的存储才会重置计数器。 |
 | `context_list()` | 分配表:每个 pin 的句柄/标签/计费大小/年龄 + 配额占用。 |
 | `notes_append(text[, supersedes, tags, sourceSeq])` | 持久日记,JSONL 只追加,每条有稳定 id(`n7`)。三个可选的"边"是模型自己造结构的原语:`supersedes` 让被取代的旧笔记折叠成一行审计条目(版本链),`tags` 把笔记装进自建的桶,`sourceSeq` 指向来源日志事件。 |
-| `notes_read([id, tag, includeSuperseded])` | 读日记:默认显示活跃笔记 + 折叠的已取代条目;`id` 逐字取单条(含链状态),`tag` 只读一个桶,`includeSuperseded` 展开折叠条目全文。 |
+| `notes_read([listTags, id, tag, includeSuperseded])` | 读日记:默认显示活跃笔记 + 折叠的已取代条目;`listTags` 枚举全部桶及活跃条数,`id` 逐字取单条(含链状态,也是被截断笔记的逃生口),`tag` 只读一个桶,`includeSuperseded` 展开折叠条目全文。 |
 | `history_search(query[, limit, beforeSeq])` | 混合匹配的全日志搜索,含被压缩/切掉的段落:整串短语 → 全词命中 → 部分词三档,按密度排序,默认排除自己的记忆工具流量(`includeSelf` 可加回)。命中带字符 `offset` 可续读。 |
 | `history_read(fromSeq, toSeq[, offset])` | 精确区间读;单条超长事件的读取被截断时,用截断标记给出的 `offset` 续读。 |
 
@@ -58,6 +58,8 @@ pin 住在 system prompt,每次请求都交租,所以保险柜的上限来自**�
 `pinsMaxChars`(默认 12000)和 `pinMaxChars`(默认 4000)只在**窗口解析失败**时作为 fallback 上限;没有绝对下限,换到小窗口模型,保险柜就真的变小。
 
 配额打满时 alloc 被拒绝,并在错误里附上最老的几个任务级 pin 作为释放候选——诚实的失败加扶手,绝不静悄悄地自动驱逐。
+
+保险柜还有一道**渲染闸**(v1.5.0 起):alloc 只是写入时的准入检查,所以渲染器每次请求都用**读者**的窗口重新评估配额——大窗口会话灌满的工作区保险柜不会灌爆小窗口会话的提示词。超出的 pin 用一行响亮的 `[vault overflow …]` 点名省略(仍在册,`context_list` 可见)。
 
 ## 配置
 
