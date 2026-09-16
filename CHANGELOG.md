@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.7.0
+
+Self-review fixes — plus a CRITICAL latent bug the new boot smoke caught:
+
+- **CRITICAL: tool installation has been silently broken since v1.3.0.**
+  The history_search output schema declared `tier: { type: ['number',
+  'null'] }`, which dsh-tools rejects (type must be a single value or
+  oneOf). defineTool throws at define time; installAgent's guard swallowed
+  it into a host warning — so on the next host restart every agent would
+  have gotten the prompt sections but ZERO tools (no pins, no notes, no
+  history). Latent only because the running host predates v1.3.0. Fixed to
+  `oneOf: [number, null]`, and locked by the new boot suite.
+- **Boot smoke suite (`test/boot.mjs`)**: `apply()` + `installAgent` run
+  against a mock cordis context — unknown config keys fail loudly, all
+  seven tools and all prompt sections must register. This is the wiring
+  coverage the pure store suites could not provide.
+- **Checkpoint hard budget (`checkpointMaxChars`, default 8000)**: the
+  reset artifact now has a size cap — a context-saving plugin must not let
+  its own checkpoint grow unbounded. Authority order: fixed protocol +
+  mechanical state > durable notes (self-truncating to the remaining
+  budget) > LLM sketch (trimmed, then dropped, always with a stated
+  marker).
+- **New-session diary signpost section**: while THIS session has no diary
+  file and other sessions in the workspace do, a one-line section points at
+  them (`notes_read({ listSessions: true })`). It vanishes after the
+  session's first note — a signpost, not narration, so it never pays rent.
+  Cached per notes-dir mtime (one stat per prompt assembly).
+- Tests: boot suite (17) — 259 total across 7 suites.
+
 ## 1.6.2
 
 - **Whole-chain tree view**: `notes_read({ chain: "n7" })` renders the
