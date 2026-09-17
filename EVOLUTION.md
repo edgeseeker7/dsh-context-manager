@@ -89,16 +89,16 @@ swap   ─ phrase 匹配 ──→ CJK 分词+BM25 ──→ +PRF/簇上限/mult
 
 ## 三、版本切割(v1.9 → v2.0 → v2.x)
 
-### v1.9 —— 止血(治模式 A 零检索 + 检索质量三件套)
+### v1.9 —— 止血(检索质量,已 de-hack)
 
-目标:reset 臂均值 0.387 → 0.45+(救回 16 道零检索题的大部分)。
+目标:reset 臂均值 0.387 → 0.45+。⚠️ v1.9.1 起移除 hack 机制:强制首搜闸门(bench 形状的假肢,生产是噪声)、seq 桶簇上限(拍脑袋参数)、echo 长度带——只留原则性机制。
 
-1. **索引常驻**:diary tags buckets 渲染成一行一条进 checkpoint(可枚举面清单,Anthropic MEMORY.md 形态)
-2. **无条件首动作**:reset 后 armed,首答前必须"view 索引 + ≥1 次 history_search",宿主 post-execute 拦截(ADR-027 背书,触发失败→0)
-3. **CJK unigram+bigram 分词**(检索基建)
-4. **PRF/RM3 二轮检索**(首轮 top-k 高频词扩展;19fda262 案例直接可救)
-5. **簇上限**(500-seq 窗口每桶≤2)
-6. **答案自检门**:悬置指代("all four entities"式)机械回退检索(行业无先例,差异化)
+1. **索引常驻**:checkpoint 全史主题地图(10 段分层抽样 topTerms,机械生成,冷启动可用)——可枚举面清单
+2. **CJK unigram+bigram 分词 + BM25-lite**(检索基建;旧空白分词中文全灭,离线 0/16)
+3. **自回环原则性修复**:注入消息不作轮界 + ≈query 事件降级 + spliced 类型排除
+4. **内容近重复去重**(Jaccard token 集 ≥0.6,内容驱动,非位置拍脑袋)
+5. **results mention 尾行**(PRF 呈现层)
+6. **答案自检门(待做)**:悬置指代("all four entities"式)机械回退检索——generate-then-verify,检索成本只付在"答案真的需要记忆"的轮次,非 blanket rule
 7. **sketch 合法化**:明确"可用于枚举检索面"(不自残)
 
 ### v2.0 —— 成型(类型化账本 + 写入整理)
@@ -112,8 +112,8 @@ swap   ─ phrase 匹配 ──→ CJK 分词+BM25 ──→ +PRF/簇上限/mult
 ### v2.x —— 治本与终态
 
 13. **Contextual Retrieval 入库**:LLM 给 chunk 生成上下文前缀(行业实测检索失败率 -49%),治 C 治本
-14. **双层触发终态**:廉价常开(每轮无条件注入 top-3 超短事实,位置=历史之后最新消息之前保前缀缓存,Zep 做法)+ 分类器深度门控——"要不要搜"彻底消失
-15. **评测体系**:触发召回率(差异化维度)+ recall@k 分离诊断 + 每题 3 次重复 + 配对 bootstrap CI
+14. **无条件检索注入(触发问题的有数据答案)**:SME 实测确定性管线 78.33% vs 门控 46.67%——"invocation, not expression, is the dominant bottleneck"。形态=廉价常开(每轮无条件注入 top-3 超短结果,位置=历史之后最新消息之前保前缀缓存,Zep Context Block 位置)+ 深度按需(多跳才进组成层)。注意与已删除的"强制首搜闸门"的本质区别:那不是一次性 bench 假肢,而是管线级无条件阶段——模型从未有过选择权,何谈 hack
+15. **评测体系**:触发召回率(差异化维度)+ recall@k 分离诊断 + 每题 3 次重复 + 配对 bootstrap CI。我们的 65 题可以成为"forced-invocation ablation"(SME open question #2)的首批实测之一——是贡献不是 hack
 
 ### 明确不做(诚实边界)
 

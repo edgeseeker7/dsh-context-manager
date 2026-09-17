@@ -418,3 +418,7 @@ Dream-recall 五臂实验(325 trials)的 trace 归因直接驱动:reset 臂 24.6
 - checkpoint 全史主题地图:全日志 10 段分层抽样 topTerms,机械生成无 LLM——冷启动下"历史里有什么"的菜单,治"不知道有什么可搜"
 
 工具描述同步(token-based matching、mentions、多样性)。测试:9 套件 292 断言全绿(新增 reset-gate 套件:armed 注入/一次性/空结果诚实/未 armed 直通/summarize armed/主题地图早期主题浮出)。
+
+## v1.9.1 — de-hack
+
+按用户评审移除 bench 形状的机制:强制首搜闸门(resetGate,一次性假肢)、seq 桶簇上限(500/2 拍脑袋参数)、echo 1.25× 长度带(过拟合阈值)。替换为原则性机制:内容近重复去重(Jaccard token 集 ≥0.6)、echo 仅判"事件≈query"。触发问题的正确答案改按 SME 外部实测(确定性管线 78.33% vs 门控 46.67%)走"无条件廉价注入+深度按需"路线,记入 EVOLUTION.md。检索质量真修复(CJK 分词/BM25-lite/自回环/results-mention)全部保留。测试:9 套件 285 断言全绿。

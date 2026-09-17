@@ -243,16 +243,18 @@ ok(cpRead.text.includes('checkpoint/summary'), 'history_read flags compressed co
   ok(hit.matches.length > 0 && hit.matches[0].seq === 1, 'CJK query tokenizes and hits differently-worded event (盒/美规/尺寸)');
 }
 {
-  // cluster cap: 3 same-bucket hits + 1 far hit — the far one must appear
-  // in the first pass instead of the third same-bucket hit.
+  // near-duplicate suppression: three near-identical hits dedupe to one,
+  // leaving room for the differently-worded far hit; small histories still
+  // backfill from the overflow so nothing starves.
   const events = [userMessage('alpha 话题 一'), userMessage('alpha 话题 二'), userMessage('alpha 话题 三')];
   for (let i = 0; i < 505; i += 1) events.push(userMessage('填充 '.repeat(50)));
-  events.push(userMessage('alpha 远簇 在很后面'));
+  events.push(userMessage('beta 远簇 在很后面 alpha'));
   events.push(userMessage('probe alpha'));
   const session = fakeSession(events);
   const hit = historySearch(session, { query: 'alpha', limit: 3 });
-  ok(hit.matches.some((m) => m.seq >= 505), 'cluster cap admits a far-cluster hit');
-  ok(hit.matches.every((m) => m.seq !== 0), 'the 3rd same-cluster hit is displaced by far-cluster hits');
+  const sameClusterKept = hit.matches.filter((m) => m.seq <= 2).length;
+  ok(sameClusterKept <= 1, 'near-identical cluster hits dedupe to one');
+  ok(hit.matches.some((m) => m.seq === events.length - 2), 'the differently-worded far hit takes the freed slot');
   const allSame = historySearch(fakeSession(events.slice(0, 3)), { query: 'alpha', limit: 3 });
   ok(allSame.matches.length === 3, 'small history backfills overflow (no starvation)');
 }
