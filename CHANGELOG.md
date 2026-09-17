@@ -422,3 +422,12 @@ Dream-recall 五臂实验(325 trials)的 trace 归因直接驱动:reset 臂 24.6
 ## v1.9.1 — de-hack
 
 按用户评审移除 bench 形状的机制:强制首搜闸门(resetGate,一次性假肢)、seq 桶簇上限(500/2 拍脑袋参数)、echo 1.25× 长度带(过拟合阈值)。替换为原则性机制:内容近重复去重(Jaccard token 集 ≥0.6)、echo 仅判"事件≈query"。触发问题的正确答案改按 SME 外部实测(确定性管线 78.33% vs 门控 46.67%)走"无条件廉价注入+深度按需"路线,记入 EVOLUTION.md。检索质量真修复(CJK 分词/BM25-lite/自回环/results-mention)全部保留。测试:9 套件 285 断言全绿。
+
+## v1.9.2 — retrieval pipeline + answer-gap gate(工具层,事件驱动)
+
+触发问题的两层机制实现(无定时、无强制、全部内容门控):
+- **管线层(B)**:agent/pre-step 每轮 step 1 跑一次 history_search(用户消息做 query),仅当最强匹配够硬(phrase 命中或 ≥2 个不同 query token 命中,且非自回环)才注入 top-3——always-run、score-gated,无关轮次静默。历史 <200 事件全跳过(本来就在上下文里)。
+- **答案缺口闸门(C)**:step≥2 时扫描草稿答案的机械缺口信号(悬置指代/自认无知),命中才跑一次验证检索注入——generate-then-verify,成本只付在"答案自己证明需要记忆"的轮次。每轮最多一次。
+- match 输出新增 matched(命中 token 数)与 echo 标记,供门控使用。
+- 设计依据:SME 外部实测确定性管线 78.33% vs 门控 46.67%(无条件检索+内容门注入,非强制调用);19ff8cd0#2 答案自认"请告知四家主体"是缺口信号的 trace 铁证。
+测试:新增 pipeline 套件 8 断言(强匹配注入/弱匹配静默/短历史跳过/缺口触发/每轮一次/干净答案不动),10 套件 293 断言全绿。
