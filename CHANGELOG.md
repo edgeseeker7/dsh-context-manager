@@ -401,3 +401,20 @@ not mechanisms. This release writes them into the stores:
     `notes_read` — recall survives both `/reset` and official compaction.
   - Cache-stable quantized budget hint section (25/50/75% bands).
   - Notes persisted per session under `~/.dsh/context-reset/notes/`.
+
+## v1.9.0 — retrieval that actually retrieves + the post-reset gate
+
+Dream-recall 五臂实验(325 trials)的 trace 归因直接驱动:reset 臂 24.6% 零检索惨败(检索意图缺失)、中文检索全灭、自回环霸榜、同簇刷屏。本版本修复检索层与触发层。
+
+**检索重构(lib/tokens.js + lib/history.js)**
+- CJK bigram + 短 run unigram + ascii 分词替换空白分词——旧实现把整句中文 query 当一个必须字面命中的 term,中文检索全灭(离线评测 0/16)
+- BM25-lite 打分(Σ tf×idf)替换 tier1/tier2 启发式;tier 模型简化:0=phrase 命中,1=分词打分命中
+- 自回环修复三件套:currentTurnStart 跳过 "Current runtime context"/"Memory check (" 注入作轮界;≈query 的 echo 事件降级出 phrase 层;agent/inbox/spliced 类型排除
+- 簇上限:500-seq 桶每桶≤2 条+溢出回填(多样性保底,小会话不饿死)
+- 结果尾行 "results mention: <高频锚点>"——伪相关反馈的呈现层实现,提示模型回喂新查询词
+
+**触发层(lib/engine.js + lib/malloc.js)**
+- /reset 后强制首搜(resetGate):引擎 summarize 时 armed,下一次模型请求经 agent/pre-step 注入一次机械 history_search 结果(一次性,失败不阻塞轮次)——宿主侧回答"该搜没搜"(16/65),不依赖模型自觉
+- checkpoint 全史主题地图:全日志 10 段分层抽样 topTerms,机械生成无 LLM——冷启动下"历史里有什么"的菜单,治"不知道有什么可搜"
+
+工具描述同步(token-based matching、mentions、多样性)。测试:9 套件 292 断言全绿(新增 reset-gate 套件:armed 注入/一次性/空结果诚实/未 armed 直通/summarize armed/主题地图早期主题浮出)。

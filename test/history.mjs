@@ -138,12 +138,13 @@ ok(andHit.matches.length > 0 && andHit.matches[0].seq === 1, 'multi-term query m
 ok(andHit.matches[0].tier === 1, 'term-AND match is reported as tier 1');
 ok(andHit.matches.every((m) => m.seq !== 4 && m.seq !== 5), 'own memory-tool calls and results are excluded by default');
 
-// 2) partial-term events only surface when no all-term match exists
+// 2) partial-term events now surface as scored tier-1 matches (token model:
+// no tier-2 fallback tier anymore — everything non-phrase is BM25-scored)
 const partialOnly = historySearch(hybridSession, { query: 'photoCoordinator 绝不存在的词' });
-ok(partialOnly.matches.length > 0 && partialOnly.matches[0].tier === 2, 'partial-term events surface only as tier 2 fallback');
-ok(partialOnly.matches.some((m) => m.seq === 1 || m.seq === 3), 'tier 2 includes events matching some terms');
+ok(partialOnly.matches.length > 0 && partialOnly.matches[0].tier === 1, 'partial-term events surface as tier 1 scored matches');
+ok(partialOnly.matches.some((m) => m.seq === 1 || m.seq === 3), 'tier 1 includes events matching some tokens');
 const noTier2 = historySearch(hybridSession, { query: '照片管理目标 BasicInfoOverlayEntry' });
-ok(noTier2.matches.length > 0 && noTier2.matches.every((m) => m.tier !== 2), 'no tier-2 noise when all-term matches exist');
+ok(noTier2.matches.length > 0 && noTier2.matches.every((m) => m.tier === 1), 'non-phrase matches are all tier 1 in the token model');
 
 // 3) exact phrase ranks tier 0 above term-AND
 const phraseSession = fakeSession([
@@ -226,6 +227,59 @@ const cpSearch = historySearch(cpSession, { query: 'needle' });
 ok(cpSearch.matches.find((m) => m.seq === 0)?.checkpoint === true, 'search marks checkpoint events');
 const cpRead = historyRead(cpSession, { fromSeq: 0, toSeq: 0 }, 500);
 ok(cpRead.text.includes('checkpoint/summary'), 'history_read flags compressed content in the event header');
+
+
+// ── v1.9.0: tokenized CJK retrieval ──────────────────────────────────────
+{
+  // a CJK query has no whitespace; the old split made it one unmatchable
+  // literal. Bigram/unigram tokens must bridge differently-worded answers.
+  const session = fakeSession([
+    userMessage('早期闲聊'),
+    assistantMessage('CLVRCONNECT 内盒（美规 US 系列）尺寸：195×90×175mm / 137×71×71mm，项目 USNS011'),
+    userMessage('无关内容'),
+    userMessage('调出美规水晶盒的尺寸数据'),
+  ]);
+  const hit = historySearch(session, { query: '调出美规水晶盒的尺寸数据' });
+  ok(hit.matches.length > 0 && hit.matches[0].seq === 1, 'CJK query tokenizes and hits differently-worded event (盒/美规/尺寸)');
+}
+{
+  // cluster cap: 3 same-bucket hits + 1 far hit — the far one must appear
+  // in the first pass instead of the third same-bucket hit.
+  const events = [userMessage('alpha 话题 一'), userMessage('alpha 话题 二'), userMessage('alpha 话题 三')];
+  for (let i = 0; i < 505; i += 1) events.push(userMessage('填充 '.repeat(50)));
+  events.push(userMessage('alpha 远簇 在很后面'));
+  events.push(userMessage('probe alpha'));
+  const session = fakeSession(events);
+  const hit = historySearch(session, { query: 'alpha', limit: 3 });
+  ok(hit.matches.some((m) => m.seq >= 505), 'cluster cap admits a far-cluster hit');
+  ok(hit.matches.every((m) => m.seq !== 0), 'the 3rd same-cluster hit is displaced by far-cluster hits');
+  const allSame = historySearch(fakeSession(events.slice(0, 3)), { query: 'alpha', limit: 3 });
+  ok(allSame.matches.length === 3, 'small history backfills overflow (no starvation)');
+}
+{
+  // results mention: top anchors from the hit set, query tokens excluded.
+  const session = fakeSession([
+    assistantMessage('USNS011 内盒尺寸 195×90×175mm USNS011 归档 USNS011'),
+    assistantMessage('USNS011 第二张表'),
+    userMessage('probe 尺寸'),
+  ]);
+  const hit = historySearch(session, { query: '尺寸' });
+  ok(Array.isArray(hit.mentions) && hit.mentions.includes('usns011'), 'results mention surfaces the hit-set anchor (usns011, lowercased)');
+  ok(!hit.mentions.includes('尺寸'), 'mentions exclude the query tokens themselves');
+}
+{
+  // runtime-context / nudge injections are NOT turn starters: a user-role
+  // "Current runtime context" message after the probe must not move the
+  // exclusion boundary past the probe (the dream-eval self-echo).
+  const session = fakeSession([
+    userMessage('历史 needle 事实'),
+    userMessage('probe needle'),
+    userMessage('Current runtime context. This snapshot supersedes earlier snapshots.'),
+  ]);
+  const hit = historySearch(session, { query: 'needle' });
+  ok(hit.matches.some((m) => m.seq === 0), 'history still searchable after injected notice');
+  ok(hit.matches.every((m) => m.seq !== 2), 'injected runtime-context notice excluded from results');
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
