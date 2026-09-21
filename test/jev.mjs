@@ -1,5 +1,13 @@
-/* jev reranker: request shape, verdict mapping, failure fallback. */
-import { JEV_NOTE_THRESHOLD, JEV_RELEVANCE_THRESHOLD, jevRerank, jevSelectNoteSpans, jevSelectPages } from '../lib/jev.js';
+/* jev reranker: request shape, verdict mapping, failure fallback, log tags. */
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const home = mkdtempSync(join(tmpdir(), 'dsh-cm-jev-'));
+process.env.DSH_HOME = home;
+
+const { JEV_NOTE_THRESHOLD, JEV_RELEVANCE_THRESHOLD, jevLog, jevRerank, jevSelectNoteSpans, jevSelectPages } =
+  await import('../lib/jev.js');
 
 let passed = 0;
 let failed = 0;
@@ -63,6 +71,15 @@ ok((await jevRerank({ apiKey: 'k', request: REQUEST, candidates, fetchImpl: badS
 
 ok(JEV_RELEVANCE_THRESHOLD === 0.5, 'relevance threshold pinned at 0.5');
 ok(JEV_NOTE_THRESHOLD === 0.7, 'note threshold pinned at the measured 0.7 band (durable 0.81+, churn 0.61-)');
+
+// ── the log line carries its session tag ──────────────────────────────────
+{
+  jevLog('jev notes kept 1/2 spans', { id: 'session-e589b4cd-336a-4cec-b13d-5f236efc97b9' });
+  jevLog('jev enabled (rerank + page-select)');
+  const lines = readFileSync(join(home, 'context-manager', 'jev.log'), 'utf8').trim().split('\n');
+  ok(lines[0].includes('[e589b4cd] jev notes kept 1/2 spans'), 'a session-tagged line names its session');
+  ok(!lines[1].includes('['), 'a line without a session stays untagged');
+}
 
 // ── page selection ─────────────────────────────────────────────────────────
 {

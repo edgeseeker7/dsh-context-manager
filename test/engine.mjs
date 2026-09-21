@@ -1,7 +1,7 @@
 /* dsh-context-manager reset-engine mechanics (v1.4.0): the deterministic
  * checkpoint section — anchor extraction is pure and tested without a
  * harness. */
-import { extractAnchors, extractConstraints } from '../lib/engine.js';
+import { extractAnchors, extractConstraints, pinCandidates } from '../lib/engine.js';
 
 let passed = 0;
 let failed = 0;
@@ -41,6 +41,25 @@ ok(extractAnchors('').paths.length === 0, 'empty input is safe');
 
 // short fragments that must NOT become paths
 ok(extractAnchors('a/b and x/y/z').paths.length === 0, 'relative fragments are not paths');
+
+// ── pin candidates: what a nudge may name (measured production noise) ─────
+{
+  const anchors = {
+    ids: [
+      ['e589b4cd-336a-4cec-b13d-5f236efc97b9', 4], // a session id, not a fact
+      ['1f95b41', 2],                              // a short commit hash: too short to be exact
+      ['deadbeefcafe0123456789abcdef012345678901', 2],
+    ],
+    paths: [['/home/liudi/dsh-context-manager/lib/malloc.js', 3]],
+  };
+  const picked = pinCandidates(anchors, 'nothing pinned yet');
+  ok(!picked.some((value) => value.includes('e589b4cd')), 'a bare UUID is never offered as a pin candidate');
+  ok(picked.includes('/home/liudi/dsh-context-manager/lib/malloc.js'), 'a real path still is');
+  ok(picked.length === 2, 'short ids stay out (length gate)');
+  const alreadyPinned = pinCandidates(anchors, 'the vault already says /home/liudi/dsh-context-manager/lib/malloc.js');
+  ok(!alreadyPinned.some((value) => value.endsWith('malloc.js')), 'an already-pinned value is not offered again');
+  ok(pinCandidates({ ids: [], paths: [] }, '').length === 0, 'no anchors, no candidates');
+}
 
 // ── v1.6.0: constraint sentences are extracted verbatim ──────────────────
 const constraints = extractConstraints('先把 A 做完。不要改 BasicInfoOverlayEntry 的关闭逻辑,那是域隔离约束。另外必须用 v2 接口。天气不错。');
