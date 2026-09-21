@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.11.0
+
+Jev page selection (ReadAgent choose-pages): a cached 10-stratum runtime
+topic map (`lib/topicmap.js`) gives Jev the history menu; `jevSelectPages`
+(fanned-out noul, one call) picks strata worth reading by digest semantics
+and injects digest+excerpt — firing even with zero keyword overlap (mode-C
+vocabulary mismatch). Keyword channel, strength gate, and rerank unchanged;
+any Jev failure degrades to them. `jevApiKey` accepted from profile config
+or the `JEV_API_KEY` env; every degrade logs its reason; agent install logs
+one enabled/disabled status line.
+
+## 1.10.0
+
+Jev reranker for the retrieval pipeline: with a key configured, top-5 hits
+are judged in one fanned-out noul call and only verdicts >= 0.5 are injected
+(cap 3); unavailable or failed Jev degrades to the plain score gate. Also
+fixes the injection pool carrying the question's own echo hit.
+
+## 1.9.2
+
+Retrieval pipeline + answer-gap gate: step-1 always-run history_search with
+score-gated top-3 injection (strong match only, echo excluded); step>=2
+mechanical gap-signal scan of the drafted answer with one verification
+search per turn. Honest no-match output.
+
+## 1.9.1
+
+De-hack: removed the forced first-search reset gate, the seq-bucket cluster
+cap, and the echo length band (bench-shaped mechanisms); replaced with
+Jaccard content dedupe and exact-equality echo detection.
+
+## 1.9.0
+
+Retrieval that actually retrieves: CJK bigram/unigram tokenization +
+BM25-lite scoring (whitespace splitting made every CJK query one unmatchable
+literal), self-loop triple fix, results-mention tail anchors, checkpoint
+full-history topic map (10 strata).
+
 ## 1.8.0
 
 Measured, not guessed — the two "decided on a whim" numbers that actually
