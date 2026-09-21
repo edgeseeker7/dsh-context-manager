@@ -1,5 +1,5 @@
 /* jev reranker: request shape, verdict mapping, failure fallback. */
-import { JEV_RELEVANCE_THRESHOLD, jevRerank, jevSelectPages } from '../lib/jev.js';
+import { JEV_NOTE_THRESHOLD, JEV_RELEVANCE_THRESHOLD, jevRerank, jevSelectNoteSpans, jevSelectPages } from '../lib/jev.js';
 
 let passed = 0;
 let failed = 0;
@@ -61,7 +61,8 @@ ok(fallback === null, 'network failure → null after retry, never throws');
 const badStatus = async () => ({ ok: false });
 ok((await jevRerank({ apiKey: 'k', request: REQUEST, candidates, fetchImpl: badStatus })) === null, 'non-ok status → null');
 
-ok(JEV_RELEVANCE_THRESHOLD === 0.5, 'threshold pinned at 0.5');
+ok(JEV_RELEVANCE_THRESHOLD === 0.5, 'relevance threshold pinned at 0.5');
+ok(JEV_NOTE_THRESHOLD === 0.7, 'note threshold pinned at the measured 0.7 band (durable 0.81+, churn 0.61-)');
 
 // ── page selection ─────────────────────────────────────────────────────────
 {
@@ -86,6 +87,39 @@ ok(JEV_RELEVANCE_THRESHOLD === 0.5, 'threshold pinned at 0.5');
   ok((await jevSelectPages({ apiKey: undefined, request: REQUEST, pages, fetchImpl: fetcher2 })) === null, 'no key → null');
   const failing2 = async () => { throw new Error('down'); };
   ok((await jevSelectPages({ apiKey: 'k', request: REQUEST, pages, fetchImpl: failing2 })) === null, 'failure → null');
+}
+
+// ── note-worthiness (the nudge's content gate) ─────────────────────────────
+{
+  const spans = [
+    { fromSeq: 600, toSeq: 607, digest: 'constraint / api / version', excerpt: '决定只用 v2 接口，禁止 v1 兼容层' },
+    { fromSeq: 608, toSeq: 615, digest: 'chatter / lint / format', excerpt: '跑了 ruff format 和 tach check' },
+  ];
+  const recorded = '[w24] 部署规则: 一律走仓库脚本';
+  let sentBody = null;
+  const fetcher3 = async (_url, init) => {
+    sentBody = JSON.parse(init.body);
+    return { ok: true, json: async () => ({ answers: { span_0: { type: 'noul', noul: 0.77 }, span_1: { type: 'noul', noul: 0.08 } } }) };
+  };
+  const verdicts = await jevSelectNoteSpans({ apiKey: 'k', recorded, spans, fetchImpl: fetcher3 });
+  ok(verdicts !== null && verdicts.length === 2, 'note verdicts back for every span');
+  ok(verdicts[0].fromSeq === 600 && Math.abs(verdicts[0].probability - 0.77) < 1e-9, 'verdict mapped to the right span');
+  ok(Object.keys(sentBody.questions).length === 2, 'one question per span in a single call');
+  ok(sentBody.questions.span_0.type === 'noul', 'noul question type');
+  ok(sentBody.questions.span_0.instructions.recorded_memory === recorded, 'the span is judged against what memory already holds');
+  ok(sentBody.questions.span_0.instructions.span.includes('seq 600..607'), 'the span carries its seq range');
+  ok(sentBody.state === recorded, 'the recorded memory is the request state, never the user message');
+  ok(
+    (await jevSelectNoteSpans({ apiKey: undefined, recorded, spans, fetchImpl: fetcher3 })) === null,
+    'no key → null (the volume trigger stays in charge)',
+  );
+  const down = async () => {
+    throw new Error('down');
+  };
+  ok((await jevSelectNoteSpans({ apiKey: 'k', recorded, spans, fetchImpl: down })) === null, 'failure → null');
+  const reasons4 = [];
+  await jevSelectNoteSpans({ apiKey: 'k', recorded, spans: [], onDegrade: (r) => reasons4.push(r) });
+  ok(reasons4.length === 1 && reasons4[0].includes('no spans'), 'an empty delta degrades honestly');
 }
 
 // ── degrade reasons are reported, never silent ─────────────────────────────
