@@ -190,5 +190,48 @@ const history210 = (payload) => {
   ok(out.length === 2 && out[out.length - 1].content[0].text.includes('related history'), 'jev outage degrades to the score gate, still injects');
 }
 
+// ── B+Jev pages: zero keyword overlap still surfaces the right page ───────
+{
+  // 模式C 复刻: 问题说"水晶盒", 答案页只有"内盒/USNS011"——关键词通道零命中,
+  // 页面选择凭 digest 语义相中选段注入。
+  const events = [];
+  for (let i = 0; i < 200; i += 1) events.push(userMessage(`日常流水 ${i}`));
+  events.push(assistantMessage('CLVRCONNECT 内盒 US 系列 195×90×175mm 项目 USNS011 出货检验标准'));
+  for (let i = 200; i < 208; i += 1) events.push(userMessage(`填充 ${i}`));
+  events.push(userMessage('汇报一下美规水晶盒的尺寸'));
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    const answers = {};
+    for (const key of Object.keys(body.questions)) {
+      answers[key] = { type: 'noul', noul: key === 'page_9' ? 0.9 : 0.05 };
+    }
+    return { ok: true, json: async () => ({ answers }) };
+  };
+  const { preStep } = mockAgent(events, { jevApiKey: 'test-key' });
+  const out = await preStep(1, 1, [{ role: 'user', content: [{ type: 'text', text: '汇报一下美规水晶盒的尺寸' }] }]);
+  globalThis.fetch = realFetch;
+  const notice = out[out.length - 1];
+  ok(out.length === 2, 'page channel fires without any keyword hit');
+  ok(notice.content[0].text.includes('selected history areas'), 'notice carries the selected-areas section');
+  ok(notice.content[0].text.includes('USNS011'), 'the chosen page delivers the differently-worded fact (mode C)');
+}
+
+// ── B+Jev pages: page selection failure leaves the keyword channel intact ──
+{
+  const events = history210([
+    assistantMessage('CLVRCONNECT 内盒（美规 US 系列）尺寸：195×90×175mm，项目 USNS011'),
+    userMessage('调出美规水晶盒的尺寸数据'),
+  ]);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error('gateway down');
+  };
+  const { preStep } = mockAgent(events, { jevApiKey: 'test-key' });
+  const out = await preStep(1, 1, [{ role: 'user', content: [{ type: 'text', text: '调出美规水晶盒的尺寸数据' }] }]);
+  globalThis.fetch = realFetch;
+  ok(out.length === 2, 'page-select outage still injects via keyword channel');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
