@@ -41,7 +41,7 @@ const fakeSession = (events) => ({
   },
 });
 
-function mockAgent(events) {
+function mockAgent(events, { jevApiKey } = {}) {
   const hooks = {};
   const agent = {
     session: fakeSession(events),
@@ -60,6 +60,7 @@ function mockAgent(events) {
     nudgeEvery: 9999,
     suggestAnchors: () => [],
     logger: { warn: () => {} },
+    jevApiKey,
   });
   const preStep = async (turn, step, messages = []) => {
     const decision = await hooks['agent/pre-step']({ turn, step, messages }, async () => ({ messages }));
@@ -132,6 +133,61 @@ const history210 = (payload) => {
   const { preStep } = mockAgent(events);
   const out = await preStep(1, 2, []);
   ok(out.length === 0, 'no gap signal, no verification');
+}
+
+// ── B+Jev: noise candidate filtered by the reranker ───────────────────────
+{
+  const events = history210([
+    assistantMessage('CLVRCONNECT 内盒（美规 US 系列）尺寸：195×90×175mm，项目 USNS011'),
+    assistantMessage('xTool F1 Ultra SMT 钢网激光切割 尺寸 参数 美规 讨论 记录 内盒 水晶盒 尺寸 尺寸 尺寸 尺寸'),
+    userMessage('调出美规水晶盒的尺寸数据'),
+  ]);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      answers: {
+        cand_210: { type: 'noul', noul: 0.95 },
+        cand_211: { type: 'noul', noul: 0.05 },
+      },
+    }),
+  });
+  const { preStep } = mockAgent(events, { jevApiKey: 'test-key' });
+  const out = await preStep(1, 1, [{ role: 'user', content: [{ type: 'text', text: '调出美规水晶盒的尺寸数据' }] }]);
+  globalThis.fetch = realFetch;
+  const notice = out[out.length - 1];
+  ok(out.length === 2 && notice.content[0].text.includes('USNS011'), 'jev keeps the relevant hit');
+  ok(!notice.content[0].text.includes('xTool'), 'jev drops the merely-topical noise');
+}
+
+// ── B+Jev: all verdicts below threshold → silent ──────────────────────────
+{
+  const events = history210([
+    assistantMessage('CLVRCONNECT 内盒（美规 US 系列）尺寸：195×90×175mm，项目 USNS011'),
+    userMessage('调出美规水晶盒的尺寸数据'),
+  ]);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { cand_210: { type: 'noul', noul: 0.1 } } }) });
+  const { preStep } = mockAgent(events, { jevApiKey: 'test-key' });
+  const out = await preStep(1, 1, [{ role: 'user', content: [{ type: 'text', text: '调出美规水晶盒的尺寸数据' }] }]);
+  globalThis.fetch = realFetch;
+  ok(out.length === 1, 'jev all-noise verdict suppresses the injection');
+}
+
+// ── B+Jev: jev failure falls back to the score gate ───────────────────────
+{
+  const events = history210([
+    assistantMessage('CLVRCONNECT 内盒（美规 US 系列）尺寸：195×90×175mm，项目 USNS011'),
+    userMessage('调出美规水晶盒的尺寸数据'),
+  ]);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error('gateway down');
+  };
+  const { preStep } = mockAgent(events, { jevApiKey: 'test-key' });
+  const out = await preStep(1, 1, [{ role: 'user', content: [{ type: 'text', text: '调出美规水晶盒的尺寸数据' }] }]);
+  globalThis.fetch = realFetch;
+  ok(out.length === 2 && out[out.length - 1].content[0].text.includes('related history'), 'jev outage degrades to the score gate, still injects');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
