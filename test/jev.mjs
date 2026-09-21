@@ -88,5 +88,18 @@ ok(JEV_RELEVANCE_THRESHOLD === 0.5, 'threshold pinned at 0.5');
   ok((await jevSelectPages({ apiKey: 'k', request: REQUEST, pages, fetchImpl: failing2 })) === null, 'failure → null');
 }
 
+// ── degrade reasons are reported, never silent ─────────────────────────────
+{
+  const reasons = [];
+  await jevRerank({ apiKey: 'k', request: REQUEST, candidates, fetchImpl: async () => { throw new Error('boom'); }, onDegrade: (r) => reasons.push(r) });
+  ok(reasons.length === 1 && reasons[0].includes('boom'), 'network degrade reports the reason');
+  const reasons2 = [];
+  await jevRerank({ apiKey: 'k', request: REQUEST, candidates, fetchImpl: async () => ({ ok: false, status: 429 }), onDegrade: (r) => reasons2.push(r) });
+  ok(reasons2.length === 1 && reasons2[0].includes('429'), 'http-status degrade reports the status');
+  const reasons3 = [];
+  await jevSelectPages({ apiKey: undefined, request: REQUEST, pages: [], onDegrade: (r) => reasons3.push(r) });
+  ok(reasons3.length === 1 && reasons3[0].includes('no api key'), 'missing key degrade reports itself');
+}
+
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
