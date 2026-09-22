@@ -233,5 +233,36 @@ ok(tree.includes('branch A correction') && tree.includes('branch B correction'),
 ok(tree.includes('active'), 'active endpoints are marked active');
 ok(store.read(treeSession, { chain: 'n99' }).includes('no note n99'), 'an unknown chain id says so');
 
+
+// ── renderIndex: one line per active note, budget-capped ──────────────────
+{
+  const dir = mkdtempSync(join(tmpdir(), 'cm-index-'));
+  const store = new NotesStore(4000, { logger: { warn: () => {} } });
+  const sid = 'index-test';
+  for (let i = 1; i <= 10; i += 1) {
+    await store.append(sid, `第 ${i} 条笔记内容, 有一些值得记录的决策和原因 ${'X'.repeat(60)}`, { tags: ['t'] });
+  }
+  const idx = store.renderIndex(store.entries(sid), { maxChars: 3000 });
+  const lines = idx.split('\n').filter((l) => l.startsWith('[n'));
+  ok(lines.length === 10, 'index has one line per note');
+  ok(lines[9].startsWith('[n10'), 'newest note indexed');
+  ok(lines[0].includes('…'), 'long preview truncated with ellipsis');
+  ok(lines[0].includes('#t'), 'index line carries tags');
+  const tiny = store.renderIndex(store.entries(sid), { maxChars: 200 });
+  ok(tiny.split('\n').filter((l) => l.startsWith('[n')).length < 10, 'tight budget indexes fewer notes');
+  ok(tiny.includes('older notes not indexed'), 'dropped notes disclosed');
+}
+
+// ── append advisory: giant single note warns, never rejects ────────────────
+{
+  const dir = mkdtempSync(join(tmpdir(), 'cm-adv-'));
+  const store = new NotesStore(4000, { logger: { warn: () => {} } });
+  const small = await store.append('adv-test', 'short note');
+  ok(small.advisory === undefined, 'small note: no advisory');
+  const big = await store.append('adv-test', 'X'.repeat(2500));
+  ok(big.accepted === true, 'giant note still accepted');
+  ok(big.advisory?.includes('2500'), 'giant note advisory reports its size');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
