@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.12.0
+
+Skill promoter (suggest-only): by-id `notes_read` fetches are counted in a
+workspace-level stats file (`note-stats.json`); a note fetched ≥4 times
+across ≥3 distinct days, ≥3 days old, still active and outside the 7-day
+cooldown earns one Jev content judgment (`jevJudgePromotable` — reusable
+PROCEDURE vs fact/credential/one-off, threshold 0.7). Passing candidates get
+a crystallization hint appended to the read result: confirm with the user,
+draft `~/.agents/skills/<name>/SKILL.md`, supersede the note with a pointer.
+Jev outage degrades to silence (logged); a content rejection also cools
+down. `skillPromote: false` disables. Offline validation over 257 real
+session logs found ZERO historical by-id fetches — the signal only exists
+post-1.11.1 (index-form injection makes `notes_read({ id })` the natural
+way back to a note), so stats accumulate from here.
+
+## 1.11.1
+
+Notes index-form injection: a diary whose full text would blow the
+checkpoint budget is injected as a one-line-per-note INDEX
+(`NotesStore.renderIndex`, every id still fetchable verbatim) instead of a
+truncated dump — reset artifacts stop growing with the diary. Oversized
+single notes (>2000 chars) earn an advisory on append.
+
 ## 1.11.0
 
 Jev page selection (ReadAgent choose-pages): a cached 10-stratum runtime

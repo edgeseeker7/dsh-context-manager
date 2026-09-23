@@ -1,6 +1,6 @@
 {
   "name": "dsh-context-manager",
-  "version": "1.11.1",
+  "version": "1.12.0",
   "description": "Explicit context-memory subsystem for DeepSeek Harness: a four-layer memory model (verbatim pins, durable notes, LLM sketch, full-log retrieval) with a malloc-style tool API (context_alloc/free/list) and an on-demand /reset command next to /compact",
   "keywords": [
     "deepseek-harness",
@@ -36,7 +36,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "biome check lib/ && node --check lib/index.js && node --check lib/engine.js && node --check lib/command.js && node --check lib/malloc.js && node --check lib/history.js && node --check lib/notes.js && node --check lib/lock.js && node --check lib/client.js && node test/smoke.mjs && node test/history.mjs && node test/notes.mjs && node test/engine.mjs && node test/command.mjs && node test/client-definition.mjs && node test/boot.mjs && node test/nudge.mjs && node test/topic-map.mjs && node test/pipeline.mjs && node test/jev.mjs",
+    "check": "biome check lib/ && node --check lib/index.js && node --check lib/engine.js && node --check lib/command.js && node --check lib/malloc.js && node --check lib/history.js && node --check lib/notes.js && node --check lib/lock.js && node --check lib/client.js && node --check lib/promote.js && node test/smoke.mjs && node test/history.mjs && node test/notes.mjs && node test/engine.mjs && node test/command.mjs && node test/client-definition.mjs && node test/boot.mjs && node test/nudge.mjs && node test/topic-map.mjs && node test/pipeline.mjs && node test/jev.mjs && node test/promote.mjs",
     "check:fix": "biome check --write lib/",
     "prepublishOnly": "pnpm run check"
   },
